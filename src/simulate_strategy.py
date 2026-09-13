@@ -1,0 +1,270 @@
+"""기준 수요와 탄력성 추정치를 연결해 가격·할인 전략을 Monte Carlo 비교한다."""
+
+import argparse
+import json
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+plt.rcParams["font.family"] = "Malgun Gothic"
+plt.rcParams["axes.unicode_minus"] = False
+
+try:
+    from .estimate_elasticity import estimate_price_elasticity
+    from .generate_data import PAYMENT_RATE, PLATFORM_RATE
+    from .train_demand_model import CATEGORICAL_FEATURES, NUMERIC_FEATURES, add_model_features, build_model
+except ImportError:
+    from estimate_elasticity import estimate_price_elasticity
+    from generate_data import PAYMENT_RATE, PLATFORM_RATE
+    from train_demand_model import CATEGORICAL_FEATURES, NUMERIC_FEATURES, add_model_features, build_model
+
+
+DEFAULT_SCENARIOS = [
+    {"name": "현재 가격", "list_price": 9_000, "discount": 0},
+    {"name": "1,000원 할인", "list_price": 9_000, "discount": 1_000},
+    {"name": "500원 인상", "list_price": 9_500, "discount": 0},
+    {"name": "1,000원 인상", "list_price": 10_000, "discount": 0},
+]
+
+
+def validate_scenarios(scenarios):
+    names = set()
+    for scenario in scenarios:
+        required = {"name", "list_price", "discount"}
+        if not required.issubset(scenario):
+            raise ValueError(f"시나리오 필수 값이 없습니다: {required - set(scenario)}")
+        if scenario["name"] in names:
+            raise ValueError("시나리오 이름은 중복될 수 없습니다.")
+        names.add(scenario["name"])
+        if scenario["list_price"] <= 0 or not 0 <= scenario["discount"] < scenario["list_price"]:
+            raise ValueError("정가는 양수이고 할인액은 정가보다 작아야 합니다.")
+
+
+def build_reference_forecast(panel, menu_id="M01", horizon_days=14):
+    frame = add_model_features(panel)
+    train = frame[frame["split"] == "train"]
+    model = build_model().fit(
+        train[CATEGORICAL_FEATURES + NUMERIC_FEATURES], train["units_sold"]
+    )
+    last_days = sorted(frame["day_index"].unique())[-horizon_days:]
+    reference = frame[(frame["menu_id"] == menu_id) & frame["day_index"].isin(last_days)].copy()
+    baseline_price = int(reference["initial_list_price"].iloc[0])
+    reference["offered_list_price"] = baseline_price
+    reference["regular_paid_unit_price"] = baseline_price
+    reference["promotion_discount"] = 0
+    reference["bundle_available"] = 0
+    reference["bundle_price"] = 0
+    reference = add_model_features(reference)
+    reference["base_mean"] = np.clip(
+        model.predict(reference[CATEGORICAL_FEATURES + NUMERIC_FEATURES]), 0, None
+    )
+    return reference, baseline_price
+
+
+def summarize_distribution(values):
+    return {
+        "mean": float(np.mean(values)),
+        "p05": float(np.quantile(values, 0.05)),
+        "p50": float(np.quantile(values, 0.50)),
+        "p95": float(np.quantile(values, 0.95)),
+    }
+
+
+def simulate_scenarios(
+    reference,
+    elasticity_report,
+    scenarios,
+    baseline_price,
+    simulations=10_000,
+    seed=42,
+):
+    validate_scenarios(scenarios)
+    if simulations < 100:
+        raise ValueError("안정적인 확률 요약을 위해 simulations는 100 이상이어야 합니다.")
+    rng = np.random.default_rng(seed)
+    base_mean = reference["base_mean"].to_numpy(dtype=float)
+    costs = reference["unit_cost"].to_numpy(dtype=float)
+    channels = reference["channel"].to_numpy()
+    fee_rates = np.array([PLATFORM_RATE[value] + PAYMENT_RATE[value] for value in channels])
+
+    baseline_counts = rng.poisson(base_mean, size=(simulations, len(base_mean)))
+    baseline_margin = baseline_price - costs - baseline_price * fee_rates
+    baseline_profit = baseline_counts @ baseline_margin
+    baseline_units = baseline_counts.sum(axis=1)
+
+    elasticity = float(elasticity_report["elasticity"])
+    elasticity_error = float(elasticity_report["robust_standard_error"])
+    promo_effect = float(elasticity_report["promotion_log_effect"])
+    promo_error = float(elasticity_report["promotion_robust_standard_error"])
+    results = []
+    for index, scenario in enumerate(scenarios):
+        paid_price = scenario["list_price"] - scenario["discount"]
+        is_reference = paid_price == baseline_price and scenario["discount"] == 0
+        if is_reference:
+            units = baseline_units
+            profit = baseline_profit
+            multiplier_samples = np.ones(simulations)
+        else:
+            sampled_elasticity = rng.normal(elasticity, elasticity_error, simulations)
+            log_multiplier = sampled_elasticity * np.log(paid_price / baseline_price)
+            if scenario["discount"] > 0:
+                log_multiplier += rng.normal(promo_effect, promo_error, simulations)
+            multiplier_samples = np.exp(np.clip(log_multiplier, -5, 5))
+            scenario_mean = multiplier_samples[:, None] * base_mean[None, :]
+            counts = rng.poisson(scenario_mean)
+            unit_margin = paid_price - costs - paid_price * fee_rates
+            units = counts.sum(axis=1)
+            profit = counts @ unit_margin
+        delta = profit - baseline_profit
+        results.append(
+            {
+                "name": scenario["name"],
+                "list_price": int(scenario["list_price"]),
+                "discount": int(scenario["discount"]),
+                "paid_price": int(paid_price),
+                "is_reference": is_reference,
+                "demand_multiplier": summarize_distribution(multiplier_samples),
+                "units": summarize_distribution(units),
+                "contribution_profit": summarize_distribution(profit),
+                "profit_delta": summarize_distribution(delta),
+                "success_probability": None if is_reference else float(np.mean(delta > 0)),
+            }
+        )
+    return results
+
+
+def run_simulation(
+    panel_path,
+    output_dir,
+    scenarios=None,
+    menu_id="M01",
+    horizon_days=14,
+    simulations=10_000,
+    seed=42,
+):
+    panel = pd.read_csv(panel_path, encoding="utf-8-sig")
+    elasticity_report = estimate_price_elasticity(panel, menu_id=menu_id)
+    reference, baseline_price = build_reference_forecast(
+        panel, menu_id=menu_id, horizon_days=horizon_days
+    )
+    scenarios = DEFAULT_SCENARIOS if scenarios is None else scenarios
+    results = simulate_scenarios(
+        reference,
+        elasticity_report,
+        scenarios,
+        baseline_price,
+        simulations=simulations,
+        seed=seed,
+    )
+    report = {
+        "menu_id": menu_id,
+        "horizon_days": horizon_days,
+        "reference_context": f"마지막 {horizon_days}일의 요일·시간·채널·날씨와 현재 원가",
+        "baseline_price": baseline_price,
+        "simulations": simulations,
+        "seed": seed,
+        "elasticity": elasticity_report["elasticity"],
+        "elasticity_standard_error": elasticity_report["robust_standard_error"],
+        "ground_truth_used": False,
+        "scenarios": results,
+        "limitations": [
+            "최근 14일 관측 날씨를 시나리오 문맥으로 재사용했으며 실제 미래에는 예보가 필요하다.",
+            "1,000원 할인은 관측 실험과 같은 프로모션 노출 효과가 재현된다고 가정한다.",
+            "세트 구성은 신규 수요와 잠식 효과를 관측 데이터만으로 분리할 수 없어 이 비교에 포함하지 않았다.",
+        ],
+    }
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "simulation.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    (output_dir / "README.md").write_text(render_report(report), encoding="utf-8")
+    render_chart(report, output_dir / "strategy-comparison.png")
+    return report
+
+
+def render_chart(report, output_path):
+    scenarios = report["scenarios"]
+    names = [row["name"] for row in scenarios]
+    means = np.array([row["contribution_profit"]["mean"] for row in scenarios]) / 1_000_000
+    lows = np.array([row["contribution_profit"]["p05"] for row in scenarios]) / 1_000_000
+    highs = np.array([row["contribution_profit"]["p95"] for row in scenarios]) / 1_000_000
+    errors = np.vstack([means - lows, highs - means])
+    figure, axis = plt.subplots(figsize=(10, 6), constrained_layout=True)
+    bars = axis.bar(
+        names,
+        means,
+        yerr=errors,
+        capsize=5,
+        color=["#577590", "#43AA8B", "#F4A261", "#E76F51"],
+    )
+    axis.set(
+        title=f"{report['horizon_days']}일 전략별 기여이익 분포",
+        ylabel="기여이익 (백만원)",
+    )
+    axis.grid(axis="y", alpha=0.2)
+    for bar, value in zip(bars, means):
+        axis.text(
+            bar.get_x() + bar.get_width() / 2,
+            value + 0.03,
+            f"{value:.2f}",
+            ha="center",
+        )
+    figure.savefig(output_path, dpi=150)
+    plt.close(figure)
+
+
+def render_report(report):
+    rows = []
+    for scenario in report["scenarios"]:
+        success = "기준" if scenario["success_probability"] is None else f"{scenario['success_probability']:.1%}"
+        rows.append(
+            f"| {scenario['name']} | {scenario['paid_price']:,}원 | "
+            f"{scenario['units']['mean']:.1f} | {scenario['contribution_profit']['mean']:,.0f}원 | "
+            f"{scenario['profit_delta']['mean']:+,.0f}원 | {success} |"
+        )
+    limitations = "\n".join(f"- {item}" for item in report["limitations"])
+    return f"""# 가격·할인 Monte Carlo 시뮬레이션
+
+- 메뉴: `{report['menu_id']}`
+- 기간: {report['horizon_days']}일
+- 반복: {report['simulations']:,}회, seed `{report['seed']}`
+- 탄력성: {report['elasticity']:.3f} ± {report['elasticity_standard_error']:.3f} (표준오차)
+- 생성기 Ground Truth 사용: `{str(report['ground_truth_used']).lower()}`
+
+![전략별 기여이익 분포](strategy-comparison.png)
+
+| 전략 | 실결제가 | 기대 판매량 | 기대 기여이익 | 현재 대비 | 성공확률 |
+|---|---:|---:|---:|---:|---:|
+{chr(10).join(rows)}
+
+성공확률은 같은 14일 문맥에서 시나리오 기여이익이 현재 가격의 모의 결과보다 클 확률이다.
+각 전략의 상세 5·50·95 백분위는 `simulation.json`에 저장된다.
+
+## 해석 한계
+
+{limitations}
+"""
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    root = Path(__file__).resolve().parents[1]
+    parser.add_argument("--panel", type=Path, default=root / "data" / "processed" / "demand_panel.csv")
+    parser.add_argument("--output-dir", type=Path, default=root / "reports" / "simulation")
+    parser.add_argument("--simulations", type=int, default=10_000)
+    parser.add_argument("--seed", type=int, default=42)
+    args = parser.parse_args()
+    report = run_simulation(
+        args.panel, args.output_dir, simulations=args.simulations, seed=args.seed
+    )
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()

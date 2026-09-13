@@ -15,6 +15,7 @@
     -0.10872348882521776
   ],
   "promotion_log_effect": 0.35394525642288543,
+  "promotion_robust_standard_error": 0.058594910437543765,
   "iterations": 6,
   "mean_actual": 2.0765151515151516,
   "mean_fitted": 2.0765151515151503,

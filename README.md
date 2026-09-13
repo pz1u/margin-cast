@@ -98,3 +98,14 @@ Day 1~60을 학습하고 Validation 15일, Test 15일을 시간순으로 평가�
 
 추정값과 가격별 수요 배수는
 [가격탄력성 보고서](reports/modeling/elasticity/README.md)에서 확인할 수 있습니다.
+
+## 가격·할인 시뮬레이션
+
+기준 수요 모델과 탄력성 추정치를 연결해 14일 전략별 판매량·기여이익 분포를 계산합니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m src.simulate_strategy
+```
+
+비교 결과와 해석 한계는
+[Monte Carlo 시뮬레이션 보고서](reports/simulation/README.md)에 저장됩니다.

@@ -99,6 +99,7 @@ def estimate_price_elasticity(panel, menu_id="M01"):
             float(elasticity + 1.96 * standard_error),
         ],
         "promotion_log_effect": float(parameters["promotion_active"]),
+        "promotion_robust_standard_error": float(parameter_errors["promotion_active"]),
         "iterations": iterations,
         "mean_actual": float(frame["units_sold"].mean()),
         "mean_fitted": float(fitted.mean()),
