@@ -109,3 +109,16 @@ Day 1~60을 학습하고 Validation 15일, Test 15일을 시간순으로 평가�
 
 비교 결과와 해석 한계는
 [Monte Carlo 시뮬레이션 보고서](reports/simulation/README.md)에 저장됩니다.
+
+## AI 에이전트 연동 준비
+
+AI 에이전트가 계산 결과를 직접 생성하지 않고 검증된 엔진을 호출하도록 서비스 경계와
+함수 도구 스키마를 준비했습니다. 실제 에이전트 등록과 프롬프트 구현은 포함하지 않습니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m src.agent_tool_contracts get_margincast_capabilities
+.\.venv\Scripts\python.exe -m src.agent_tool_contracts compare_price_strategies `
+  --arguments-file examples\compare-price-strategies.json
+```
+
+연동 규칙과 남은 작업은 [에이전트 도구 연동 계약](docs/agent-tool-contract.md)을 참고하세요.

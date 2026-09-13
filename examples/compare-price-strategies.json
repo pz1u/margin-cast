@@ -1,0 +1,23 @@
+{
+  "menu_id": "M01",
+  "scenarios": [
+    {
+      "name": "1,000원 할인",
+      "list_price": 9000,
+      "discount": 1000
+    },
+    {
+      "name": "500원 인상",
+      "list_price": 9500,
+      "discount": 0
+    },
+    {
+      "name": "1,000원 인상",
+      "list_price": 10000,
+      "discount": 0
+    }
+  ],
+  "horizon_days": 14,
+  "simulations": 10000,
+  "seed": 42
+}
