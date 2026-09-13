@@ -63,4 +63,16 @@ margin-cast/
 
 데이터 사전, 수식, 실제 검증 수치, 모델링 한계는
 [합성 데이터 설계와 검증](docs/synthetic-data.md)에 정리했습니다.
-현재 단계는 데이터 생성과 검증까지이며, 다음 단계는 EDA입니다.
+
+## EDA와 학습용 패널
+
+관측 가능한 CSV만 사용해 날짜×시간×채널×메뉴 패널을 만들고 EDA 보고서를 생성합니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m src.prepare_analysis_data
+.\.venv\Scripts\python.exe -m src.run_eda
+```
+
+학습 패널은 `data/processed/demand_panel.csv`, 검증 결과는 같은 폴더의
+`panel_validation.json`에 생성되며 Git에서 제외됩니다.
+EDA 결과는 [관측 데이터 EDA](reports/eda/README.md)에서 확인할 수 있습니다.

@@ -1,0 +1,204 @@
+{
+  "scope": {
+    "start_date": "2026-01-05",
+    "end_date": "2026-04-04",
+    "days": 90,
+    "panel_rows": 15840,
+    "zero_sales_rows": 6129,
+    "zero_sales_ratio": 0.38693181818181815,
+    "ground_truth_used": false
+  },
+  "totals": {
+    "orders": 14676,
+    "units_sold": 20676,
+    "net_sales": 150892500,
+    "contribution_profit": 70207740,
+    "contribution_margin": 0.4652831651672548
+  },
+  "hourly_orders_per_day": {
+    "11": 11.333333333333334,
+    "12": 25.455555555555556,
+    "13": 22.366666666666667,
+    "14": 7.444444444444445,
+    "15": 5.688888888888889,
+    "16": 6.944444444444445,
+    "17": 11.822222222222223,
+    "18": 21.244444444444444,
+    "19": 24.122222222222224,
+    "20": 20.011111111111113,
+    "21": 6.633333333333334
+  },
+  "hourly_groups": {
+    "lunch": 23.91111111111111,
+    "dinner": 21.792592592592595,
+    "offpeak": 6.692592592592593
+  },
+  "delivery_share": {
+    "CLEAR": 0.4261671007814065,
+    "RAIN": 0.7230507030251385
+  },
+  "orders_per_day": {
+    "weekday": 155.6,
+    "weekend": 182.48
+  },
+  "menu_summary": [
+    {
+      "menu_id": "M02",
+      "menu_name": "돈까스덮밥",
+      "category": "MAIN",
+      "units_sold": 3866,
+      "order_count": 3866,
+      "net_sales": 38660000,
+      "contribution_profit": 17524120,
+      "contribution_margin": 0.45328815312985
+    },
+    {
+      "menu_id": "M01",
+      "menu_name": "치킨마요",
+      "category": "MAIN",
+      "units_sold": 4200,
+      "order_count": 4200,
+      "net_sales": 37635354,
+      "contribution_profit": 16152752,
+      "contribution_margin": 0.42919091447897634
+    },
+    {
+      "menu_id": "M03",
+      "menu_name": "제육덮밥",
+      "category": "MAIN",
+      "units_sold": 3649,
+      "order_count": 3649,
+      "net_sales": 34665500,
+      "contribution_profit": 16049370,
+      "contribution_margin": 0.46297817715019257
+    },
+    {
+      "menu_id": "M04",
+      "menu_name": "카레",
+      "category": "MAIN",
+      "units_sold": 2961,
+      "order_count": 2961,
+      "net_sales": 23688000,
+      "contribution_profit": 11897360,
+      "contribution_margin": 0.5022526173590003
+    },
+    {
+      "menu_id": "M05",
+      "menu_name": "감자튀김",
+      "category": "SIDE",
+      "units_sold": 1863,
+      "order_count": 1863,
+      "net_sales": 6520500,
+      "contribution_profit": 3493610,
+      "contribution_margin": 0.5357886665133041
+    },
+    {
+      "menu_id": "M08",
+      "menu_name": "미니우동",
+      "category": "SIDE",
+      "units_sold": 1485,
+      "order_count": 1485,
+      "net_sales": 4455000,
+      "contribution_profit": 2278620,
+      "contribution_margin": 0.5114747474747475
+    },
+    {
+      "menu_id": "M06",
+      "menu_name": "콜라",
+      "category": "DRINK",
+      "units_sold": 1657,
+      "order_count": 1657,
+      "net_sales": 3278146,
+      "contribution_profit": 1774038,
+      "contribution_margin": 0.5411711375881367
+    },
+    {
+      "menu_id": "M07",
+      "menu_name": "제로콜라",
+      "category": "DRINK",
+      "units_sold": 995,
+      "order_count": 995,
+      "net_sales": 1990000,
+      "contribution_profit": 1037870,
+      "contribution_margin": 0.5215427135678392
+    }
+  ],
+  "observed_experiments": [
+    {
+      "experiment_id": "E01",
+      "kind": "DISCOUNT",
+      "value": 1000,
+      "start_date": "2026-01-25",
+      "end_date": "2026-01-31",
+      "before_daily_units": 44.0,
+      "during_daily_units": 63.285714285714285,
+      "observed_change": 0.4383116883116882
+    },
+    {
+      "experiment_id": "E02",
+      "kind": "PRICE",
+      "value": 9500,
+      "start_date": "2026-02-09",
+      "end_date": "2026-02-15",
+      "before_daily_units": 45.0,
+      "during_daily_units": 43.0,
+      "observed_change": -0.0444444444444444
+    },
+    {
+      "experiment_id": "E03",
+      "kind": "PRICE",
+      "value": 10000,
+      "start_date": "2026-02-26",
+      "end_date": "2026-03-04",
+      "before_daily_units": 46.285714285714285,
+      "during_daily_units": 41.285714285714285,
+      "observed_change": -0.10802469135802473
+    },
+    {
+      "experiment_id": "E04",
+      "kind": "BUNDLE",
+      "value": 10000,
+      "start_date": "2026-03-20",
+      "end_date": "2026-03-26",
+      "before_daily_units": 51.42857142857143,
+      "during_daily_units": 54.42857142857143,
+      "observed_change": 0.05833333333333335
+    }
+  ],
+  "association_before_bundle": {
+    "orders": 11936,
+    "support": 0.08068029490616623,
+    "chicken_to_cola_confidence": 0.28248753300088003,
+    "overall_cola_order_rate": 0.10480898123324396,
+    "lift": 2.695260746521586
+  },
+  "bundle_observed": {
+    "orders_with_bundle": 197
+  },
+  "time_split": [
+    {
+      "split": "train",
+      "rows": 10560,
+      "days": 60,
+      "units_sold": 13528
+    },
+    {
+      "split": "validation",
+      "rows": 2640,
+      "days": 15,
+      "units_sold": 3535
+    },
+    {
+      "split": "test",
+      "rows": 2640,
+      "days": 15,
+      "units_sold": 3613
+    }
+  ],
+  "interpretation_limits": [
+    "실험 전후 비교는 날씨와 표본 변동을 통제한 인과효과가 아니다.",
+    "세트 주문 197건 중 신규 수요와 기존 주문 전환은 POS만으로 구분할 수 없다.",
+    "75~81일에만 세트가 있어 일반적인 60/15/15 분할의 검증·평가 구간에 실험이 걸친다.",
+    "미래 수요 예측 시 실제 미래 날씨 대신 예보 또는 시나리오 입력이 필요하다."
+  ]
+}
