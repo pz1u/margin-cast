@@ -71,19 +71,23 @@ def build_eda_summary(panel, tables):
         "weekend": float(daily_orders.loc[daily_orders["is_weekend"] == 1, "order_count"].mean()),
     }
 
-    chicken_daily = (
-        panel.loc[panel["menu_id"] == "M01"].groupby("date")["units_sold"].sum()
-    )
+    menu_daily = panel.groupby(["menu_id", "date"])["units_sold"].sum()
+    menu_names = panel[["menu_id", "menu_name"]].drop_duplicates().set_index("menu_id")["menu_name"]
     experiments = []
     for event in tables["experiments"].sort_values("start_date").itertuples(index=False):
         start, end = event.start_date, event.end_date
         duration = (end - start).days + 1
-        before = chicken_daily.loc[start - pd.Timedelta(days=duration):start - pd.Timedelta(days=1)]
-        during = chicken_daily.loc[start:end]
+        target_daily = menu_daily.loc[event.menu_id]
+        before = target_daily.loc[
+            start - pd.Timedelta(days=duration):start - pd.Timedelta(days=1)
+        ]
+        during = target_daily.loc[start:end]
         experiments.append(
             {
                 "experiment_id": event.experiment_id,
                 "kind": event.kind,
+                "menu_id": event.menu_id,
+                "menu_name": menu_names[event.menu_id],
                 "value": int(event.value),
                 "start_date": start.strftime("%Y-%m-%d"),
                 "end_date": end.strftime("%Y-%m-%d"),
@@ -185,8 +189,8 @@ def build_eda_summary(panel, tables):
         },
         "interpretation_limits": [
             "실험 전후 비교는 날씨와 표본 변동을 통제한 인과효과가 아니다.",
-            "세트 주문 197건 중 신규 수요와 기존 주문 전환은 POS만으로 구분할 수 없다.",
-            "75~81일에만 세트가 있어 일반적인 60/15/15 분할의 검증·평가 구간에 실험이 걸친다.",
+            f"세트 주문 {bundle_order_count:,}건 중 신규 수요와 기존 주문 전환은 POS만으로 구분할 수 없다.",
+            "세트 실험은 Test 구간에만 있어 일반 수요 모델 학습에는 사용할 수 없다.",
             "미래 수요 예측 시 실제 미래 날씨 대신 예보 또는 시나리오 입력이 필요하다.",
         ],
     }
@@ -221,7 +225,7 @@ def render_charts(panel, tables, output_dir):
     axes[0, 0].legend(fontsize=8, ncol=2)
 
     axes[0, 1].plot(chicken_daily.index, chicken_daily.values, color="#E76F51", linewidth=1.8)
-    shade_experiments(axes[0, 1], experiments)
+    shade_experiments(axes[0, 1], experiments[experiments["menu_id"] == "M01"])
     axes[0, 1].set(title="Chicken mayo daily units", ylabel="Units")
     axes[0, 1].legend(fontsize=8, ncol=3)
 
@@ -267,7 +271,7 @@ def render_markdown(summary):
         for row in summary["menu_summary"]
     )
     experiment_rows = "\n".join(
-        f"| {row['kind']} | {row['start_date']}~{row['end_date']} | "
+        f"| {row['menu_name']} | {row['kind']} | {row['start_date']}~{row['end_date']} | "
         f"{row['before_daily_units']:.2f} | {row['during_daily_units']:.2f} | "
         f"{row['observed_change']:+.2%} |"
         for row in summary["observed_experiments"]
@@ -312,22 +316,20 @@ def render_markdown(summary):
 |---|---:|---:|---:|---:|
 {menu_rows}
 
-## 치킨마요 실험 전후 관측값
+## 메뉴별 실험 전후 관측값
 
 각 실험과 같은 길이의 직전 기간을 비교했다. 이는 기술 통계이며 인과효과 추정값이 아니다.
 
-| 실험 | 기간 | 직전 일평균 | 실험 일평균 | 관측 변화 |
-|---|---|---:|---:|---:|
+| 메뉴 | 실험 | 기간 | 직전 일평균 | 실험 일평균 | 관측 변화 |
+|---|---|---|---:|---:|---:|
 {experiment_rows}
 
 ## 시간순 데이터 분할
 
-- Train: Day 1~60
-- Validation: Day 61~75
-- Test: Day 76~90
+{chr(10).join(f"- {row['split'].title()}: {row['days']}일, {row['rows']:,}행" for row in summary['time_split'])}
 
-이 분할은 미래 데이터를 과거 학습에 섞지 않는다. 다만 세트 실험이 Day 75~81이라
-Validation과 Test에 걸치므로 세트 효과 평가에는 별도 실험 설계가 필요하다.
+이 분할은 미래 데이터를 과거 학습에 섞지 않는다. 세트 실험은 Test에만 있어
+일반 수요 모델 학습과 분리한다.
 
 ## 다음 모델의 입력 계약
 
