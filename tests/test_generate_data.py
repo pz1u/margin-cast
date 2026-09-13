@@ -89,6 +89,8 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(set(price_by_menu), {"M01", "M02", "M03"})
         self.assertGreaterEqual(price_by_menu["M01"].count(9500), 2)
         self.assertGreaterEqual(price_by_menu["M01"].count(10000), 2)
+        self.assertGreaterEqual(price_by_menu["M03"].count(10000), 2)
+        self.assertGreaterEqual(price_by_menu["M03"].count(10500), 2)
         promotion_by_menu = defaultdict(int)
         for event in PROMOTION_EXPERIMENTS:
             promotion_by_menu[event["menu_id"]] += 1

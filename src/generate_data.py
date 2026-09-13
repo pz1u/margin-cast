@@ -1,4 +1,4 @@
-"""알려진 수요 규칙으로 90일 POS 데이터와 평가 전용 정답을 생성한다."""
+"""알려진 수요 규칙으로 180일 POS 데이터와 평가 전용 정답을 생성한다."""
 
 import argparse
 import csv
@@ -26,11 +26,13 @@ PRICE_EXPERIMENTS = [
     {"experiment_id": "E03", "menu_id": "M01", "start_day": 29, "end_day": 35, "price": 9500},
     {"experiment_id": "E04", "menu_id": "M03", "start_day": 36, "end_day": 42, "price": 10000},
     {"experiment_id": "E05", "menu_id": "M01", "start_day": 43, "end_day": 49, "price": 10000},
+    {"experiment_id": "E16", "menu_id": "M03", "start_day": 57, "end_day": 63, "price": 10000},
     {"experiment_id": "E07", "menu_id": "M02", "start_day": 64, "end_day": 70, "price": 11000},
     {"experiment_id": "E09", "menu_id": "M01", "start_day": 78, "end_day": 84, "price": 9500},
     {"experiment_id": "E10", "menu_id": "M03", "start_day": 85, "end_day": 91, "price": 10500},
     {"experiment_id": "E12", "menu_id": "M01", "start_day": 99, "end_day": 105, "price": 10000},
     {"experiment_id": "E13", "menu_id": "M02", "start_day": 106, "end_day": 112, "price": 10500},
+    {"experiment_id": "E17", "menu_id": "M03", "start_day": 106, "end_day": 112, "price": 10500},
 ]
 PROMOTION_EXPERIMENTS = [
     {"experiment_id": "E01", "promotion_id": "P01", "menu_id": "M01", "start_day": 15, "end_day": 21, "discount": 1000},

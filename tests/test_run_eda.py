@@ -39,7 +39,7 @@ class EdaTests(unittest.TestCase):
         self.assertGreater(summary["association_before_bundle"]["lift"], 1)
         experiment_targets = {row["menu_id"] for row in summary["observed_experiments"]}
         self.assertEqual(experiment_targets, {"M01", "M02", "M03"})
-        self.assertEqual(len(summary["observed_experiments"]), 15)
+        self.assertEqual(len(summary["observed_experiments"]), 17)
         self.assertEqual(summary["modeling_contract"]["target"], "units_sold")
         self.assertIn("contribution_profit", summary["modeling_contract"]["exclude_from_demand_features"])
 
