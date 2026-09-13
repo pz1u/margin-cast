@@ -4,10 +4,12 @@
 
 - Phase 1 환경 안정화: 완료
 - Phase 2 Synthetic Dataset v2: 완료
-- Phase 3 EDA 재실행 및 Feature Dataset 갱신: 다음 작업
+- Phase 3 EDA 재실행 및 Feature Dataset 갱신: 완료
+- Phase 4 Baseline·가격탄력성·할인 효과: 완료
+- Phase 5 기상청 API: 다음 작업
 
-기존 v1 데이터로 만든 Baseline·탄력성·시뮬레이션·도구 계약은 전체 연결을 검증한
-프로토타입이다. 각 Phase의 완료 결과는 v2 데이터로 다시 실행하고 검증한 뒤 갱신한다.
+v1 데이터로 만든 시뮬레이션·도구 계약은 전체 연결을 검증한 프로토타입이다.
+Phase 3~4 결과는 v2 데이터로 다시 실행해 갱신했고 이후 단계도 같은 기준으로 검증한다.
 
 ## 진행 순서
 

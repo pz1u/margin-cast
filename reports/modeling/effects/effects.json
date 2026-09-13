@@ -1,0 +1,107 @@
+{
+  "method": "Poisson IRLS with HC0 robust standard errors",
+  "training_split": "train",
+  "ground_truth_used_for_training": false,
+  "ground_truth_used_for_evaluation": true,
+  "price_elasticity": {
+    "menus": [
+      {
+        "menu_id": "M01",
+        "estimated": -1.1886721155075344,
+        "ground_truth": -1.25,
+        "error": 0.06132788449246562,
+        "absolute_error": 0.06132788449246562,
+        "robust_standard_error": 0.3970754390869424,
+        "confidence_interval_95": [
+          -1.9669399761179416,
+          -0.4104042548971273
+        ],
+        "ground_truth_in_interval": true,
+        "observed_price_levels": [
+          8000,
+          9000,
+          9500,
+          10000
+        ]
+      },
+      {
+        "menu_id": "M02",
+        "estimated": -1.4486909131010681,
+        "ground_truth": -1.05,
+        "error": -0.3986909131010681,
+        "absolute_error": 0.3986909131010681,
+        "robust_standard_error": 0.5526027897325733,
+        "confidence_interval_95": [
+          -2.5317923809769116,
+          -0.36558944522522463
+        ],
+        "ground_truth_in_interval": true,
+        "observed_price_levels": [
+          9000,
+          10000,
+          10500,
+          11000
+        ]
+      },
+      {
+        "menu_id": "M03",
+        "estimated": -1.6033010872901636,
+        "ground_truth": -1.15,
+        "error": -0.4533010872901637,
+        "absolute_error": 0.4533010872901637,
+        "robust_standard_error": 0.46463702985754024,
+        "confidence_interval_95": [
+          -2.5139896658109424,
+          -0.6926125087693847
+        ],
+        "ground_truth_in_interval": true,
+        "observed_price_levels": [
+          9500,
+          10000,
+          10500
+        ]
+      }
+    ],
+    "mean_absolute_error": 0.30443996162789916,
+    "interval_coverage": 1.0
+  },
+  "promotion_lift": {
+    "menus": [
+      {
+        "menu_id": "M01",
+        "estimated_lift": 1.1604891457831756,
+        "ground_truth_lift": 1.18,
+        "error": -0.019510854216824303,
+        "absolute_error": 0.019510854216824303,
+        "estimated_log_effect": 0.14884159363663318,
+        "robust_standard_error": 0.06341199486509726,
+        "confidence_interval_95": [
+          1.0248580177229885,
+          1.314069884990232
+        ],
+        "ground_truth_in_interval": true
+      },
+      {
+        "menu_id": "M02",
+        "estimated_lift": 1.0606973925094234,
+        "ground_truth_lift": 1.12,
+        "error": -0.0593026074905767,
+        "absolute_error": 0.0593026074905767,
+        "estimated_log_effect": 0.05892660925288357,
+        "robust_standard_error": 0.07932180357272939,
+        "confidence_interval_95": [
+          0.9079698318662859,
+          1.2391149121813299
+        ],
+        "ground_truth_in_interval": true
+      }
+    ],
+    "mean_absolute_error": 0.0394067308537005,
+    "interval_coverage": 1.0
+  },
+  "limitations": [
+    "실험은 7일 단위 순차 배치여서 관측되지 않은 시기 요인과 완전히 분리되지 않는다.",
+    "세 메뉴의 탄력성 신뢰구간이 넓어 방향 판단보다 정밀한 수치 비교의 신뢰도가 낮다.",
+    "Ground Truth 비교는 합성 데이터 생성 규칙 복원 여부만 평가하며 실제 매장 일반화를 보장하지 않는다."
+  ]
+}

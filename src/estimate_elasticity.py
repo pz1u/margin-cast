@@ -15,8 +15,8 @@ def build_elasticity_design(panel, menu_id="M01", split="train"):
     if frame["offered_list_price"].nunique() < 2:
         raise ValueError("탄력성 추정에는 두 개 이상의 관측 정가가 필요합니다.")
 
-    frame["log_price_ratio"] = np.log(
-        frame["offered_list_price"] / frame["initial_list_price"]
+    frame["log_paid_price_ratio"] = np.log(
+        frame["regular_paid_unit_price"] / frame["initial_list_price"]
     )
     frame["promotion_active"] = frame["promotion_discount"].gt(0).astype(float)
     frame["delivery_rain"] = (
@@ -26,7 +26,7 @@ def build_elasticity_design(panel, menu_id="M01", split="train"):
 
     columns = {
         "intercept": np.ones(len(frame)),
-        "log_price_ratio": frame["log_price_ratio"].to_numpy(),
+        "log_paid_price_ratio": frame["log_paid_price_ratio"].to_numpy(),
         "promotion_active": frame["promotion_active"].to_numpy(),
         "delivery": frame["channel"].eq("DELIVERY").to_numpy(dtype=float),
         "rain": frame["weather"].eq("RAIN").to_numpy(dtype=float),
@@ -82,16 +82,22 @@ def estimate_price_elasticity(panel, menu_id="M01"):
     coefficients, errors, fitted, iterations = fit_poisson_irls(design, frame["units_sold"])
     parameters = dict(zip(names, coefficients))
     parameter_errors = dict(zip(names, errors))
-    elasticity = float(parameters["log_price_ratio"])
-    standard_error = float(parameter_errors["log_price_ratio"])
+    elasticity = float(parameters["log_paid_price_ratio"])
+    standard_error = float(parameter_errors["log_paid_price_ratio"])
     price_levels = sorted(int(value) for value in frame["offered_list_price"].unique())
+    paid_price_levels = sorted(int(value) for value in frame["regular_paid_unit_price"].unique())
     baseline_price = int(frame["initial_list_price"].iloc[0])
+    scenario_prices = sorted(
+        {int(round(baseline_price * ratio / 500) * 500) for ratio in (0.9, 0.95, 1, 1.05, 1.1)}
+    )
     report = {
         "menu_id": menu_id,
         "split": "train",
         "rows": int(len(frame)),
         "days": int(frame["day_index"].nunique()),
         "price_levels": price_levels,
+        "paid_price_levels": paid_price_levels,
+        "baseline_price": baseline_price,
         "elasticity": elasticity,
         "robust_standard_error": standard_error,
         "confidence_interval_95": [
@@ -100,12 +106,17 @@ def estimate_price_elasticity(panel, menu_id="M01"):
         ],
         "promotion_log_effect": float(parameters["promotion_active"]),
         "promotion_robust_standard_error": float(parameter_errors["promotion_active"]),
+        "promotion_lift": float(np.exp(parameters["promotion_active"])),
+        "promotion_confidence_interval_95": [
+            float(np.exp(parameters["promotion_active"] - 1.96 * parameter_errors["promotion_active"])),
+            float(np.exp(parameters["promotion_active"] + 1.96 * parameter_errors["promotion_active"])),
+        ],
         "iterations": iterations,
         "mean_actual": float(frame["units_sold"].mean()),
         "mean_fitted": float(fitted.mean()),
         "scenario_multipliers": {
             str(price): demand_multiplier(elasticity, baseline_price, price)
-            for price in (8_000, 8_500, 9_000, 9_500, 10_000)
+            for price in scenario_prices
         },
         "ground_truth_used": False,
         "method": "Poisson IRLS with HC0 robust standard errors",
@@ -124,21 +135,23 @@ def render_report(report):
 - 메뉴: `{report['menu_id']}`
 - 사용 구간: Train {report['days']}일, {report['rows']:,}개 셀
 - 관측 정가: {', '.join(f'{price:,}원' for price in report['price_levels'])}
+- 관측 실결제가: {', '.join(f'{price:,}원' for price in report['paid_price_levels'])}
 - 추정 탄력성: **{report['elasticity']:.3f}**
 - HC0 95% 신뢰구간: **[{lower:.3f}, {upper:.3f}]**
 - 생성기 Ground Truth 사용: `{str(report['ground_truth_used']).lower()}`
 
-가격탄력성은 가격이 1% 변할 때 기대 수요가 몇 % 변하는지를 나타낸다. 음수이면 가격 인상 시
-수요가 감소한다. 할인 기간은 별도 변수로 분리했고 채널·날씨·시간·요일·추세를 통제했다.
+가격탄력성은 실결제 가격이 1% 변할 때 기대 수요가 몇 % 변하는지를 나타낸다. 음수이면 가격
+인상 시 수요가 감소한다. 할인 기간의 추가 노출 효과는 별도 변수로 분리했고 채널·날씨·시간·
+요일·추세를 통제했다.
 
-## 9,000원 대비 수요 배수
+## {report['baseline_price']:,}원 대비 수요 배수
 
 | 시나리오 가격 | 수요 배수 | 예상 변화 |
 |---|---:|---:|
 {rows}
 
-신뢰구간은 셀별 이분산에 견고한 표준오차로 계산했다. 관측 가격이 세 수준이고 한 메뉴의
-21일 실험에 집중되어 있으므로 실제 서비스에서는 더 긴 무작위 가격 실험으로 갱신해야 한다.
+신뢰구간은 셀별 이분산에 견고한 표준오차로 계산했다. 가격과 할인 실험은 7일 단위 반복이며
+무작위 배정 실험이 아니므로 실제 서비스에서는 더 긴 교차 실험으로 갱신해야 한다.
 """
 
 

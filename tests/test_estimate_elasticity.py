@@ -27,8 +27,10 @@ class ElasticityTests(unittest.TestCase):
         self.assertFalse(report["ground_truth_used"])
         self.assertEqual(report["split"], "train")
         self.assertEqual(report["price_levels"], [9000, 9500, 10000])
+        self.assertEqual(report["paid_price_levels"], [8000, 9000, 9500, 10000])
         self.assertLess(report["elasticity"], 0)
         self.assertGreater(report["elasticity"], -3)
+        self.assertGreater(report["promotion_lift"], 1)
         self.assertGreater(report["confidence_interval_95"][1], report["confidence_interval_95"][0])
 
     def test_price_multiplier_is_monotonic_for_negative_elasticity(self):

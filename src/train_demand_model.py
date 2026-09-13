@@ -131,6 +131,7 @@ def train_and_evaluate(panel):
         benchmark_metrics = regression_metrics(evaluation["units_sold"], benchmark_prediction)
         results[split] = {
             "rows": int(len(evaluation)),
+            "days": int(evaluation["day_index"].nunique()),
             "model": model_metrics,
             "historical_benchmark": benchmark_metrics,
             "mae_improvement": float(
@@ -161,10 +162,13 @@ def render_report(report):
             f"| {split} | {values['model']['mae']:.4f} | {values['model']['rmse']:.4f} | "
             f"{values['historical_benchmark']['mae']:.4f} | {values['mae_improvement']:+.2%} |"
         )
-    return """# 수요 기준 모델 평가
+    validation_days = report["splits"]["validation"]["days"]
+    test_days = report["splits"]["test"]["days"]
+    return f"""# 수요 기준 모델 평가
 
-날짜×시간×채널×메뉴 단위의 `units_sold`를 예측한다. Day 1~60만 학습하고
-Day 61~75와 Day 76~90을 순서대로 평가했다. 생성기의 Ground Truth는 사용하지 않았다.
+날짜×시간×채널×메뉴 단위의 `units_sold`를 예측한다. 앞 {report['train_days']}일을 학습하고
+다음 {validation_days}일과 마지막 {test_days}일을 순서대로 평가했다. 생성기의 Ground Truth는
+사용하지 않았다.
 
 | 구간 | Poisson MAE | Poisson RMSE | 과거 조건부 평균 MAE | MAE 개선율 |
 |---|---:|---:|---:|---:|

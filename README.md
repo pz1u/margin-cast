@@ -92,14 +92,17 @@ Day 1~60을 학습하고 Validation 15일, Test 15일을 시간순으로 평가�
 
 ## 가격탄력성
 
-학습 구간에 포함된 가격 실험으로 치킨마요의 가격탄력성을 추정합니다.
+학습 구간에 포함된 반복 가격·할인 실험으로 M01·M02·M03의 가격탄력성과
+M01·M02의 가격 외 할인 노출 효과를 분리해 추정합니다.
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.estimate_elasticity
+.\.venv\Scripts\python.exe -m src.evaluate_effect_models
 ```
 
 추정값과 가격별 수요 배수는
-[가격탄력성 보고서](reports/modeling/elasticity/README.md)에서 확인할 수 있습니다.
+[가격탄력성 보고서](reports/modeling/elasticity/README.md)와
+[Ground Truth 대비 효과 평가](reports/modeling/effects/README.md)에서 확인할 수 있습니다.
 
 ## 가격·할인 시뮬레이션
 
