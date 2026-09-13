@@ -1,0 +1,30 @@
+{
+  "menu_id": "M01",
+  "split": "train",
+  "rows": 1320,
+  "days": 60,
+  "price_levels": [
+    9000,
+    9500,
+    10000
+  ],
+  "elasticity": -1.5051907536111593,
+  "robust_standard_error": 0.7124832983601742,
+  "confidence_interval_95": [
+    -2.901658018397101,
+    -0.10872348882521776
+  ],
+  "promotion_log_effect": 0.35394525642288543,
+  "iterations": 6,
+  "mean_actual": 2.0765151515151516,
+  "mean_fitted": 2.0765151515151503,
+  "scenario_multipliers": {
+    "8000": 1.1939724442687842,
+    "8500": 1.089843726744007,
+    "9000": 1.0,
+    "9500": 0.9218419586787726,
+    "10000": 0.8533481440967633
+  },
+  "ground_truth_used": false,
+  "method": "Poisson IRLS with HC0 robust standard errors"
+}

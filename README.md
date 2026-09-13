@@ -87,3 +87,14 @@ Day 1~60을 학습하고 Validation 15일, Test 15일을 시간순으로 평가�
 
 0판매 셀을 포함한 Poisson 회귀 결과와 과거 조건부 평균 기준선 비교는
 [수요 기준 모델 평가](reports/modeling/baseline/README.md)에 저장됩니다.
+
+## 가격탄력성
+
+학습 구간에 포함된 가격 실험으로 치킨마요의 가격탄력성을 추정합니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m src.estimate_elasticity
+```
+
+추정값과 가격별 수요 배수는
+[가격탄력성 보고서](reports/modeling/elasticity/README.md)에서 확인할 수 있습니다.
