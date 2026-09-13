@@ -206,6 +206,10 @@ class MarginCastDecisionService:
             raise DecisionServiceError(
                 "INVALID_SCENARIOS", "현재 가격과 동일한 기준 시나리오는 하나만 입력할 수 있습니다."
             )
+        if len(normalized) == 1 and reference_count == 1:
+            raise DecisionServiceError(
+                "INVALID_SCENARIOS", "현재 가격과 비교할 대안을 하나 이상 입력해야 합니다."
+            )
 
         results = simulate_scenarios(
             reference,

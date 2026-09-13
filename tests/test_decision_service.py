@@ -68,6 +68,15 @@ class DecisionServiceTests(unittest.TestCase):
             )
         self.assertEqual(context.exception.code, "INVALID_SCENARIO")
 
+    def test_reference_only_request_is_rejected(self):
+        with self.assertRaises(DecisionServiceError) as context:
+            self.service.compare_price_strategies(
+                "M01",
+                [{"name": "현재만", "list_price": 9000, "discount": 0}],
+                simulations=500,
+            )
+        self.assertEqual(context.exception.code, "INVALID_SCENARIOS")
+
 
 if __name__ == "__main__":
     unittest.main()
