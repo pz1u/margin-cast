@@ -26,6 +26,8 @@ Thumbs.db
 # Generated data
 data/*.csv
 data/*.json
+data/**/*.csv
+data/**/*.json
 
 # Exception: keep directory
 !data/.gitkeep
