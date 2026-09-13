@@ -32,7 +32,7 @@ class ValidationTests(unittest.TestCase):
 
     def test_custom_start_date_preserves_day_based_events(self):
         tables, truth = generate_dataset(start_date="2025-12-17")
-        self.assertEqual(tables["daily_context"][-1]["date"], "2026-03-16")
+        self.assertEqual(tables["daily_context"][-1]["date"], "2026-06-14")
         self.assertTrue(validate_generated_data(tables, truth)["passed"])
 
     def test_csv_roundtrip_and_file_reproducibility(self):

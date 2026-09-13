@@ -69,7 +69,7 @@ TOOL_SCHEMAS = [
                 "horizon_days": {
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 90,
+                    "maximum": 180,
                     "description": "비교 기간. 기본값은 14일",
                 },
                 "simulations": {

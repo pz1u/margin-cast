@@ -38,7 +38,7 @@ margin-cast/
 └── README.md
 ```
 
-## 현재 구현: 90일 Synthetic POS Dataset
+## 현재 구현: 180일 Synthetic POS Dataset v2
 
 8개 메뉴의 가격·할인·날씨·요일·시간대·원가 변화와 세트 전환을 반영합니다.
 생성기와 검증기는 Python 표준 라이브러리만 사용합니다.
@@ -51,18 +51,20 @@ margin-cast/
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-기본 기간은 2026-01-05~2026-04-04이며 생성할 때 기존 출력 파일을 갱신합니다.
+기본 기간은 2026-01-05~2026-07-03이며 생성할 때 기존 출력 파일을 갱신합니다.
 시작일과 저장 폴더는 `--start-date YYYY-MM-DD`, `--output-dir 경로`로 변경할 수 있습니다.
 별도 폴더를 검증할 때는 `--data-dir 경로`를 지정합니다.
 데이터를 다시 생성했다면 검증도 다시 실행해 `validation_report.json`을 갱신합니다.
 
-기본 seed 결과: 주문 **14,676건**, 주문상품 **20,676건**, 테스트 **19개 통과**.
+기본 seed 결과: 주문 **29,512건**, 주문상품 **41,593건**입니다.
+M01·M02·M03 가격 실험 9개, M01·M02 할인 실험 5개, 세트 실험 1개를 포함합니다.
 관측 데이터·실험 정의는 CSV 8개, 숨겨진 생성 파라미터와 대조 결과는
 `data/ground_truth.json`, 검증 결과는 `data/validation_report.json`에 저장됩니다.
 생성 CSV/JSON은 기존 `.gitignore` 정책에 따라 Git에서 제외합니다.
 
 데이터 사전, 수식, 실제 검증 수치, 모델링 한계는
 [합성 데이터 설계와 검증](docs/synthetic-data.md)에 정리했습니다.
+전체 진행 순서와 공식 완료 상태는 [개발 로드맵](docs/roadmap.md)을 기준으로 합니다.
 
 ## EDA와 학습용 패널
 

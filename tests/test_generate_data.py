@@ -4,6 +4,7 @@ import math
 import random
 
 from src.generate_data import (
+    BUNDLE_RULES, DAYS, PRICE_EXPERIMENTS, PROMOTION_EXPERIMENTS,
     calculate_item_amounts, calculate_price_factor, generate_dataset, poisson_quantile,
 )
 
@@ -55,7 +56,7 @@ class DatasetTests(unittest.TestCase):
 
     def test_order_size_keys_and_amounts(self):
         orders, items = self.tables["orders"], self.tables["order_items"]
-        self.assertTrue(10000 <= len(orders) <= 20000)
+        self.assertTrue(100 * DAYS <= len(orders) <= 250 * DAYS)
         self.assertGreater(len(items), len(orders))
         self.assertEqual(len({row["order_id"] for row in orders}), len(orders))
         self.assertEqual(len({row["order_item_id"] for row in items}), len(items))
@@ -66,16 +67,33 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(dict(totals), {row["order_id"]: row["contribution_profit"] for row in orders})
 
     def test_paired_price_and_promotion_demand(self):
-        chicken = [row for row in self.truth["demand_audit"] if row["menu_id"] == "M01"]
-        for first, last in [(36, 42), (53, 59)]:
-            period = [row for row in chicken if first <= row["day_index"] <= last]
+        audit = self.truth["demand_audit"]
+        for event in PRICE_EXPERIMENTS:
+            period = [row for row in audit if row["menu_id"] == event["menu_id"]
+                      and event["start_day"] <= row["day_index"] <= event["end_day"]]
             self.assertLess(sum(row["actual_count"] for row in period),
                             sum(row["no_intervention_count"] for row in period))
-        promotion = [row for row in chicken if 21 <= row["day_index"] <= 27]
-        self.assertGreater(sum(row["price_only_count"] for row in promotion),
-                           sum(row["no_intervention_count"] for row in promotion))
-        self.assertGreater(sum(row["actual_count"] for row in promotion),
-                           sum(row["price_only_count"] for row in promotion))
+        for event in PROMOTION_EXPERIMENTS:
+            promotion = [row for row in audit if row["menu_id"] == event["menu_id"]
+                         and event["start_day"] <= row["day_index"] <= event["end_day"]]
+            self.assertGreater(sum(row["price_only_count"] for row in promotion),
+                               sum(row["no_intervention_count"] for row in promotion))
+            self.assertGreater(sum(row["actual_count"] for row in promotion),
+                               sum(row["price_only_count"] for row in promotion))
+
+    def test_v2_has_repeated_multi_menu_interventions(self):
+        self.assertEqual(self.truth["schema_version"], 2)
+        price_by_menu = defaultdict(list)
+        for event in PRICE_EXPERIMENTS:
+            price_by_menu[event["menu_id"]].append(event["price"])
+        self.assertEqual(set(price_by_menu), {"M01", "M02", "M03"})
+        self.assertGreaterEqual(price_by_menu["M01"].count(9500), 2)
+        self.assertGreaterEqual(price_by_menu["M01"].count(10000), 2)
+        promotion_by_menu = defaultdict(int)
+        for event in PROMOTION_EXPERIMENTS:
+            promotion_by_menu[event["menu_id"]] += 1
+        self.assertGreaterEqual(promotion_by_menu["M01"], 3)
+        self.assertGreaterEqual(promotion_by_menu["M02"], 2)
 
     def test_hidden_parameters_are_not_observed_features(self):
         for table in self.tables.values():
@@ -112,10 +130,18 @@ class DatasetTests(unittest.TestCase):
                                      if row["menu_id"] == "M01")
         self.assertEqual(chicken(self.tables) - chicken(control),
                          sum(row["origin"] in {"incremental", "other_main"} for row in origins))
+        audit = self.truth["bundle_audit"]
+        self.assertEqual(audit["incremental_orders"], incremental)
+        self.assertEqual(
+            audit["converted_existing_orders"],
+            sum(row["origin"] != "incremental" for row in origins),
+        )
+        self.assertEqual(audit["incremental_menu_quantities"], {"M01": incremental, "M06": incremental})
         # 세트 켜기/끄기가 실험 외 기간의 난수와 거래 금액에 영향을 주면 안 된다.
         def outside(tables):
             return [{key: value for key, value in row.items() if key != "order_id"}
-                    for row in tables["orders"] if not 75 <= row["day_index"] <= 81]
+                    for row in tables["orders"]
+                    if not BUNDLE_RULES["start_day"] <= row["day_index"] <= BUNDLE_RULES["end_day"]]
         self.assertEqual(outside(self.tables), outside(control))
 
 

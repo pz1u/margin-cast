@@ -24,7 +24,7 @@ def load_observed_tables(data_dir):
     """Ground Truth를 읽지 않고 실제 서비스에서 관측 가능한 파일만 읽는다."""
     data_dir = Path(data_dir)
     tables = {
-        name: pd.read_csv(data_dir / f"{name}.csv", encoding="utf-8-sig")
+        name: pd.read_csv(data_dir / f"{name}.csv", encoding="utf-8-sig", low_memory=False)
         for name in (
             "menus",
             "orders",
@@ -130,8 +130,11 @@ def build_demand_panel(tables):
     panel["is_lunch"] = panel["hour"].isin([12, 13]).astype("int8")
     panel["is_dinner"] = panel["hour"].isin([18, 19, 20]).astype("int8")
     panel["time_index"] = (panel["day_index"] - 1) * 24 + panel["hour"]
+    total_days = int(panel["day_index"].max())
+    train_end = total_days * 2 // 3
+    validation_end = total_days * 5 // 6
     panel["split"] = np.select(
-        [panel["day_index"] <= 60, panel["day_index"] <= 75],
+        [panel["day_index"] <= train_end, panel["day_index"] <= validation_end],
         ["train", "validation"],
         default="test",
     )
@@ -171,8 +174,14 @@ def validate_demand_panel(panel, tables):
         actual = int(panel[column].sum())
         if actual != expected:
             raise ValueError(f"원천 합계 불일치: {column}, expected={expected}, actual={actual}")
+    total_days = int(panel["day_index"].max())
+    expected_split_days = {
+        "train": total_days * 2 // 3,
+        "validation": total_days * 5 // 6 - total_days * 2 // 3,
+        "test": total_days - total_days * 5 // 6,
+    }
     split_days = panel.groupby("split", observed=True)["day_index"].nunique().to_dict()
-    if split_days != {"train": 60, "validation": 15, "test": 15}:
+    if split_days != expected_split_days:
         raise ValueError(f"시간순 분할 오류: {split_days}")
 
     return {

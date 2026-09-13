@@ -25,8 +25,9 @@ class DemandModelTests(unittest.TestCase):
     def test_time_ordered_model_beats_historical_benchmark(self):
         _, report, predictions = train_and_evaluate(self.panel)
         self.assertFalse(report["ground_truth_used"])
-        self.assertEqual(report["train_days"], 60)
-        self.assertEqual(len(predictions), 30 * 11 * 2 * 8)
+        expected_train_days = int(self.panel.loc[self.panel["split"] == "train", "day_index"].nunique())
+        self.assertEqual(report["train_days"], expected_train_days)
+        self.assertEqual(len(predictions), int((self.panel["split"] != "train").sum()))
         for split in ("validation", "test"):
             self.assertLess(
                 report["splits"][split]["model"]["mae"],

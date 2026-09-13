@@ -57,8 +57,8 @@ class AgentToolContractTests(unittest.TestCase):
 
     def test_domain_error_is_returned_as_structured_json(self):
         arguments = {
-            "menu_id": "M02",
-            "scenarios": [{"name": "500원 인상", "list_price": 10500, "discount": 0}],
+            "menu_id": "M04",
+            "scenarios": [{"name": "500원 인상", "list_price": 8500, "discount": 0}],
             "horizon_days": 14,
             "simulations": 500,
             "seed": 42,

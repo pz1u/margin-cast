@@ -13,6 +13,11 @@ class EdaTests(unittest.TestCase):
         cls.temporary = tempfile.TemporaryDirectory()
         cls.root = Path(cls.temporary.name)
         tables, truth = generate_dataset()
+        cls.expected_orders = len(tables["orders"])
+        cls.expected_units = sum(row["quantity"] for row in tables["order_items"])
+        cls.expected_bundle_orders = len(
+            {row["order_id"] for row in tables["order_items"] if row["bundle_id"]}
+        )
         save_dataset(tables, truth, cls.root)
         cls.panel_path = cls.root / "processed" / "demand_panel.csv"
         prepare_analysis_data(cls.root, cls.panel_path)
@@ -28,9 +33,9 @@ class EdaTests(unittest.TestCase):
         tables = load_observed_tables(self.root)
         summary = build_eda_summary(load_panel(self.panel_path), tables)
         self.assertFalse(summary["scope"]["ground_truth_used"])
-        self.assertEqual(summary["totals"]["orders"], 14676)
-        self.assertEqual(summary["totals"]["units_sold"], 20676)
-        self.assertEqual(summary["bundle_observed"]["orders_with_bundle"], 197)
+        self.assertEqual(summary["totals"]["orders"], self.expected_orders)
+        self.assertEqual(summary["totals"]["units_sold"], self.expected_units)
+        self.assertEqual(summary["bundle_observed"]["orders_with_bundle"], self.expected_bundle_orders)
         self.assertGreater(summary["association_before_bundle"]["lift"], 1)
         self.assertEqual(summary["modeling_contract"]["target"], "units_sold")
         self.assertIn("contribution_profit", summary["modeling_contract"]["exclude_from_demand_features"])

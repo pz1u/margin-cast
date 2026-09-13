@@ -27,7 +27,10 @@ class DecisionServiceTests(unittest.TestCase):
         result = self.service.get_capabilities()
         self.assertEqual(result["status"], "ok")
         self.assertFalse(result["data"]["ground_truth_used"])
-        self.assertEqual([row["menu_id"] for row in result["supported_menus"]], ["M01"])
+        self.assertEqual(
+            [row["menu_id"] for row in result["supported_menus"]],
+            ["M01", "M02", "M03"],
+        )
         self.assertNotIn("price_elasticity", result["data"])
 
     def test_compare_adds_reference_and_returns_ranked_result(self):
@@ -52,12 +55,12 @@ class DecisionServiceTests(unittest.TestCase):
     def test_unsupported_menu_has_stable_error_code(self):
         with self.assertRaises(DecisionServiceError) as context:
             self.service.compare_price_strategies(
-                "M02",
-                [{"name": "가격 인상", "list_price": 10500, "discount": 0}],
+                "M04",
+                [{"name": "가격 인상", "list_price": 8500, "discount": 0}],
                 simulations=500,
             )
         self.assertEqual(context.exception.code, "UNSUPPORTED_MENU")
-        self.assertEqual(context.exception.details["supported_menu_ids"], ["M01"])
+        self.assertEqual(context.exception.details["supported_menu_ids"], ["M01", "M02", "M03"])
 
     def test_invalid_numeric_types_are_rejected(self):
         with self.assertRaises(DecisionServiceError) as context:

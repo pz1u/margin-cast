@@ -54,8 +54,8 @@ def validate_integrity(tables, truth):
     require(len(bundles) == len(tables["bundles"]), "세트 키 중복")
     require(len({row["experiment_id"] for row in tables["experiments"]})
             == len(tables["experiments"]), "실험 키 중복")
-    require(len(calendar) == len(tables["daily_context"]) == truth["days"] == 90, "90일 달력 오류")
-    for index in range(90):
+    require(len(calendar) == len(tables["daily_context"]) == truth["days"], "운영일 달력 오류")
+    for index in range(truth["days"]):
         current = date.fromisoformat(truth["start_date"]) + timedelta(days=index)
         context = calendar.get(current.isoformat())
         require(context is not None and context["day_index"] == index + 1, "달력 날짜 누락")
@@ -157,10 +157,10 @@ def validate_generated_data(tables, truth):
         checks[name] = bool(passed)
         require(passed, f"관계 검증 실패: {name}")
 
-    check("order_count_10000_to_20000", 10000 <= len(orders) <= 20000)
+    check("daily_order_count_range", 100 * truth["days"] <= len(orders) <= 250 * truth["days"])
     check("more_items_than_orders", len(tables["order_items"]) > len(orders))
     hourly = Counter(row["hour"] for row in orders.values())
-    hourly_means = {name: sum(hourly[hour] for hour in hours) / (90 * len(hours))
+    hourly_means = {name: sum(hourly[hour] for hour in hours) / (truth["days"] * len(hours))
                     for name, hours in {"lunch": (12, 13), "dinner": (18, 19, 20), "offpeak": (14, 15, 16)}.items()}
     check("lunch_peak", hourly_means["lunch"] > hourly_means["offpeak"])
     check("dinner_peak", hourly_means["dinner"] > hourly_means["offpeak"])
@@ -176,33 +176,51 @@ def validate_generated_data(tables, truth):
         weekday_means[name] = sum(row["date"] in dates for row in orders.values()) / len(dates)
     check("weekend_demand", weekday_means["weekend"] > weekday_means["weekday"])
 
-    def period(first, last):
+    def period(first, last, menu_id="M01"):
         selected = [row for row in orders.values() if first <= row["day_index"] <= last]
         ids = {row["order_id"] for row in selected}
-        chicken = sum(item["quantity"] for oid in ids for item in baskets[oid] if item["menu_id"] == "M01")
+        menu_units = sum(
+            item["quantity"] for oid in ids for item in baskets[oid] if item["menu_id"] == menu_id
+        )
         sales = sum(row["net_sales"] for row in selected)
         profit = sum(row["contribution_profit"] for row in selected)
-        return {"days": [first, last], "orders": len(selected), "chicken_units": chicken,
-                "chicken_per_day": chicken / (last - first + 1), "net_sales": sales,
+        return {"days": [first, last], "orders": len(selected), "menu_id": menu_id,
+                "menu_units": menu_units, "menu_units_per_day": menu_units / (last - first + 1),
+                "net_sales": sales,
                 "contribution_profit": profit, "margin": profit / sales}
 
     observed = {}
-    for label, before_days, after_days in [("discount", (14, 20), (21, 27)),
-                                          ("price_9500", (29, 35), (36, 42)),
-                                          ("price_10000", (46, 52), (53, 59))]:
-        before, after = period(*before_days), period(*after_days)
-        change = after["chicken_per_day"] / before["chicken_per_day"] - 1
-        observed[label] = {"before": before, "after": after, "quantity_change": change}
-        if (change > 0) != (label == "discount") or change == 0:
-            warnings.append(f"{label}: 기간별 관측 판매량의 방향이 가정과 다름; 날씨/표본 잡음 확인 필요")
-    cost_before, cost_after = period(60, 66), period(68, 74)
+    intervention_rules = [
+        *(dict(event, kind="PRICE") for event in truth["intervention_rules"]["price"]),
+        *(dict(event, kind="DISCOUNT") for event in truth["intervention_rules"]["promotion"]),
+    ]
+    for event in intervention_rules:
+        duration = event["end_day"] - event["start_day"] + 1
+        before_days = (event["start_day"] - duration, event["start_day"] - 1)
+        after_days = (event["start_day"], event["end_day"])
+        before = period(*before_days, menu_id=event["menu_id"])
+        after = period(*after_days, menu_id=event["menu_id"])
+        change = after["menu_units_per_day"] / before["menu_units_per_day"] - 1
+        observed[event["experiment_id"]] = {
+            "kind": event["kind"], "before": before, "after": after, "quantity_change": change
+        }
+        expected_increase = event["kind"] == "DISCOUNT"
+        if (change > 0) != expected_increase or change == 0:
+            warnings.append(
+                f"{event['experiment_id']}: 기간별 관측 판매량의 방향이 가정과 다름; "
+                "날씨/표본 잡음 확인 필요"
+            )
+    shock_day = truth["cost_shock_day"]
+    growth_day = truth["late_growth_start_day"]
+    cost_before, cost_after = period(shock_day - 7, shock_day - 1), period(growth_day, growth_day + 6)
     check("cost_shock_margin", cost_after["margin"] < cost_before["margin"])
     if not (cost_after["net_sales"] > cost_before["net_sales"]
             and cost_after["contribution_profit"] < cost_before["contribution_profit"]):
         warnings.append("원가 상승 전후 관측 기간에서 매출 증가/기여이익 감소 데모 방향 불충족")
 
     # 세트 판매로 연관성이 인위적으로 강화되기 전의 장바구니만 평가한다.
-    association_ids = [oid for oid, row in orders.items() if row["day_index"] < 75]
+    bundle_first, bundle_last = truth["bundle_audit"]["period"]
+    association_ids = [oid for oid, row in orders.items() if row["day_index"] < bundle_first]
     chicken_ids = {oid for oid in association_ids if any(r["menu_id"] == "M01" for r in baskets[oid])}
     cola_ids = {oid for oid in association_ids if any(r["menu_id"] == "M06" for r in baskets[oid])}
     confidence = len(chicken_ids & cola_ids) / len(chicken_ids)
@@ -214,9 +232,11 @@ def validate_generated_data(tables, truth):
 
     paired = {}
     audit = truth["demand_audit"]
-    expected_audit_keys = {(day, menu["menu_id"]) for day in range(1, 91)
-                           for menu in tables["menus"] if menu["category"] == "MAIN"}
-    require(len(audit) == 360 and {(r["day_index"], r["menu_id"]) for r in audit} == expected_audit_keys,
+    main_menus = [menu for menu in tables["menus"] if menu["category"] == "MAIN"]
+    expected_audit_keys = {(day, menu["menu_id"]) for day in range(1, truth["days"] + 1)
+                           for menu in main_menus}
+    require(len(audit) == truth["days"] * len(main_menus)
+            and {(r["day_index"], r["menu_id"]) for r in audit} == expected_audit_keys,
             "일별 주메뉴 정답 누락/중복")
     daily_quantities = Counter()
     for oid, items in baskets.items():
@@ -224,31 +244,39 @@ def validate_generated_data(tables, truth):
             daily_quantities[orders[oid]["day_index"], item["menu_id"]] += item["quantity"]
     for row in audit:
         # 실험 전환 전 수량과 POS를 대조한다. 세트 기간은 아래의 주문/메뉴 보존식으로 검증한다.
-        if not 75 <= row["day_index"] <= 81:
+        if not bundle_first <= row["day_index"] <= bundle_last:
             actual = daily_quantities[row["day_index"], row["menu_id"]]
             require(actual == row["actual_count"], "생성 정답과 POS 주메뉴 수량 불일치")
-    for label, first, last in [("discount", 21, 27), ("price_9500", 36, 42), ("price_10000", 53, 59)]:
-        subset = [row for row in audit if row["menu_id"] == "M01" and first <= row["day_index"] <= last]
+    for event in intervention_rules:
+        subset = [
+            row for row in audit
+            if row["menu_id"] == event["menu_id"]
+            and event["start_day"] <= row["day_index"] <= event["end_day"]
+        ]
         actual = sum(row["actual_count"] for row in subset)
         control = sum(row["no_intervention_count"] for row in subset)
         price_only = sum(row["price_only_count"] for row in subset)
-        check(f"paired_{label}", actual > control if label == "discount" else actual < control)
-        if label == "discount":
-            check("promotion_separate_from_price", actual > price_only > control)
-        paired[label] = {"actual": actual, "no_intervention": control, "price_only": price_only,
-                         "quantity_change": actual / control - 1}
+        is_discount = event["kind"] == "DISCOUNT"
+        check(f"paired_{event['experiment_id']}", actual > control if is_discount else actual < control)
+        if is_discount:
+            check(f"promotion_separate_{event['experiment_id']}", actual > price_only > control)
+        paired[event["experiment_id"]] = {
+            "kind": event["kind"], "menu_id": event["menu_id"], "actual": actual,
+            "no_intervention": control, "price_only": price_only,
+            "quantity_change": actual / control - 1,
+        }
 
     bundle_audit = truth["bundle_audit"]
     origins = bundle_audit["origins"]
     origin_counts = Counter(row["origin"] for row in origins)
     require(len({row["order_id"] for row in origins}) == len(origins), "세트 정답 키 중복")
     require({row["order_id"] for row in origins} == set(bundle_items), "세트 정답과 관측 주문 불일치")
-    bundle_period = period(75, 81)
+    bundle_period = period(bundle_first, bundle_last)
     check("bundle_incremental_order_conservation", bundle_period["orders"]
           == bundle_audit["no_bundle_order_count"] + origin_counts["incremental"])
     actual_quantities = Counter()
     for oid, items in baskets.items():
-        if 75 <= orders[oid]["day_index"] <= 81:
+        if bundle_first <= orders[oid]["day_index"] <= bundle_last:
             actual_quantities.update({row["menu_id"]: row["quantity"] for row in items})
     reconstructed = actual_quantities.copy()
     for origin in origins:
@@ -258,6 +286,26 @@ def validate_generated_data(tables, truth):
         reconstructed.update(origin["original_menu_ids"])
     check("bundle_menu_conservation", +reconstructed == Counter(bundle_audit["no_bundle_menu_quantities"])
           and all(count >= 0 for count in reconstructed.values()))
+    added, removed, incremental_quantities = Counter(), Counter(), Counter()
+    for origin in origins:
+        actual = Counter({row["menu_id"]: row["quantity"] for row in baskets[origin["order_id"]]})
+        if origin["origin"] == "incremental":
+            incremental_quantities.update(actual)
+        else:
+            original = Counter(origin["original_menu_ids"])
+            added.update(actual - original)
+            removed.update(original - actual)
+    check("bundle_origin_counts", dict(origin_counts) == bundle_audit["origin_counts"])
+    check("bundle_decomposition", bundle_audit["converted_existing_orders"]
+          == sum(origin_counts[key] for key in ("chicken_only", "copurchase", "other_main"))
+          and bundle_audit["incremental_orders"] == origin_counts["incremental"]
+          and Counter(bundle_audit["added_menu_quantities"]) == added
+          and Counter(bundle_audit["removed_menu_quantities"]) == removed
+          and Counter(bundle_audit["incremental_menu_quantities"]) == incremental_quantities)
+    check("bundle_observed_totals", bundle_audit["observed_order_count"] == bundle_period["orders"]
+          and Counter(bundle_audit["observed_menu_quantities"]) == actual_quantities
+          and bundle_audit["observed_net_sales"] == bundle_period["net_sales"]
+          and bundle_audit["observed_contribution_profit"] == bundle_period["contribution_profit"])
     if truth["bundles_enabled"]:
         check("bundle_cannibalization", sum(origin_counts[key] for key in ("chicken_only", "copurchase", "other_main")) > 0)
         check("bundle_incremental_demand", origin_counts["incremental"] > 0)

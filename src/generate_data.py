@@ -12,15 +12,36 @@ import random
 import sys
 
 DEFAULT_START = "2026-01-05"
-DAYS = 90
+DAYS = 180
 HOUR_WEIGHTS = {11: 0.8, 12: 1.8, 13: 1.6, 14: 0.5, 15: 0.4,
                 16: 0.5, 17: 0.8, 18: 1.5, 19: 1.7, 20: 1.4, 21: 0.5}
 DAY_FACTORS = [0.94, 0.96, 0.98, 1.00, 1.08, 1.18, 1.12]
 PLATFORM_RATE = {"STORE": 0.0, "DELIVERY": 0.15}
 PAYMENT_RATE = {"STORE": 0.02, "DELIVERY": 0.03}
-BUNDLE_RULES = {"start_day": 75, "end_day": 81, "price": 10000,
+BUNDLE_RULES = {"start_day": 155, "end_day": 168, "price": 10000,
                 "chicken_only_take_rate": 0.35, "copurchase_take_rate": 0.65,
                 "other_main_switch_rate": 0.025, "incremental_rate": 0.12}
+PRICE_EXPERIMENTS = [
+    {"experiment_id": "E02", "menu_id": "M02", "start_day": 22, "end_day": 28, "price": 10500},
+    {"experiment_id": "E03", "menu_id": "M01", "start_day": 29, "end_day": 35, "price": 9500},
+    {"experiment_id": "E04", "menu_id": "M03", "start_day": 36, "end_day": 42, "price": 10000},
+    {"experiment_id": "E05", "menu_id": "M01", "start_day": 43, "end_day": 49, "price": 10000},
+    {"experiment_id": "E07", "menu_id": "M02", "start_day": 64, "end_day": 70, "price": 11000},
+    {"experiment_id": "E09", "menu_id": "M01", "start_day": 78, "end_day": 84, "price": 9500},
+    {"experiment_id": "E10", "menu_id": "M03", "start_day": 85, "end_day": 91, "price": 10500},
+    {"experiment_id": "E12", "menu_id": "M01", "start_day": 99, "end_day": 105, "price": 10000},
+    {"experiment_id": "E13", "menu_id": "M02", "start_day": 106, "end_day": 112, "price": 10500},
+]
+PROMOTION_EXPERIMENTS = [
+    {"experiment_id": "E01", "promotion_id": "P01", "menu_id": "M01", "start_day": 15, "end_day": 21, "discount": 1000},
+    {"experiment_id": "E06", "promotion_id": "P02", "menu_id": "M01", "start_day": 50, "end_day": 56, "discount": 1000},
+    {"experiment_id": "E08", "promotion_id": "P03", "menu_id": "M02", "start_day": 71, "end_day": 77, "discount": 1000},
+    {"experiment_id": "E11", "promotion_id": "P04", "menu_id": "M01", "start_day": 92, "end_day": 98, "discount": 1000},
+    {"experiment_id": "E14", "promotion_id": "P05", "menu_id": "M02", "start_day": 113, "end_day": 119, "discount": 1000},
+]
+INTERMEDIATE_COST_DAY = 90
+COST_SHOCK_DAY = 141
+LATE_GROWTH_START_DAY = 142
 
 
 def create_menu_config():
@@ -82,21 +103,22 @@ def get_hour_factor(hour):
 
 def menu_terms(menu, day):
     price, discount, promotion_id = menu["base_price"], 0, ""
-    if menu["menu_id"] == "M01":
-        if 36 <= day <= 42:
-            price = 9500
-        elif 53 <= day <= 59:
-            price = 10000
-        elif 21 <= day <= 27:
-            discount, promotion_id = 1000, "P01"
+    for event in PRICE_EXPERIMENTS:
+        if menu["menu_id"] == event["menu_id"] and event["start_day"] <= day <= event["end_day"]:
+            price = event["price"]
+            break
+    for event in PROMOTION_EXPERIMENTS:
+        if menu["menu_id"] == event["menu_id"] and event["start_day"] <= day <= event["end_day"]:
+            discount, promotion_id = event["discount"], event["promotion_id"]
+            break
     return price, discount, promotion_id
 
 
 def unit_cost(menu, day):
     if menu["menu_id"] == "M01":
-        return 4900 if day >= 67 else 4100 if day >= 45 else 3800
+        return 4900 if day >= COST_SHOCK_DAY else 4100 if day >= INTERMEDIATE_COST_DAY else 3800
     # 공급가 충격은 식재료에 적용한다. 음료 매입가는 유지한다.
-    if day >= 67 and menu["category"] != "DRINK":
+    if day >= COST_SHOCK_DAY and menu["category"] != "DRINK":
         return round(menu["base_cost"] * 1.20)
     return menu["base_cost"]
 
@@ -125,23 +147,31 @@ def generate_event_tables(menus, start_date):
                 costs.append({"menu_id": menu["menu_id"], "effective_date": event_date(day),
                               "unit_cost": cost})
                 previous = cost
-    promotions = [{"promotion_id": "P01", "menu_id": "M01", "start_date": event_date(21),
-                   "end_date": event_date(27), "discount_per_unit": 1000,
-                   "funded_by": "MERCHANT", "additional_promotion_cost": 0}]
-    experiments = []
-    for identifier, kind, first, last, value in [
-        ("E01", "DISCOUNT", 21, 27, 1000),
-        ("E02", "PRICE", 36, 42, 9500),
-        ("E03", "PRICE", 53, 59, 10000),
-    ]:
-        experiments.append({"experiment_id": identifier, "kind": kind, "menu_id": "M01",
-                            "start_date": event_date(first), "end_date": event_date(last), "value": value})
+    promotions = [
+        {"promotion_id": event["promotion_id"], "menu_id": event["menu_id"],
+         "start_date": event_date(event["start_day"]), "end_date": event_date(event["end_day"]),
+         "discount_per_unit": event["discount"], "funded_by": "MERCHANT",
+         "additional_promotion_cost": 0}
+        for event in PROMOTION_EXPERIMENTS
+    ]
+    experiments = [
+        {"experiment_id": event["experiment_id"], "kind": "PRICE", "menu_id": event["menu_id"],
+         "start_date": event_date(event["start_day"]), "end_date": event_date(event["end_day"]),
+         "value": event["price"]}
+        for event in PRICE_EXPERIMENTS
+    ]
+    experiments.extend(
+        {"experiment_id": event["experiment_id"], "kind": "DISCOUNT", "menu_id": event["menu_id"],
+         "start_date": event_date(event["start_day"]), "end_date": event_date(event["end_day"]),
+         "value": event["discount"]}
+        for event in PROMOTION_EXPERIMENTS
+    )
     bundles = [{"bundle_id": "B01", "bundle_name": "치킨마요+콜라",
                 "main_menu_id": "M01", "drink_menu_id": "M06",
                 "start_date": event_date(BUNDLE_RULES["start_day"]),
                 "end_date": event_date(BUNDLE_RULES["end_day"]),
                 "bundle_price": BUNDLE_RULES["price"]}]
-    experiments.append({"experiment_id": "E04", "kind": "BUNDLE", "menu_id": "M01",
+    experiments.append({"experiment_id": "E15", "kind": "BUNDLE", "menu_id": "M01",
                         "start_date": bundles[0]["start_date"], "end_date": bundles[0]["end_date"],
                         "value": BUNDLE_RULES["price"]})
     return {"menu_cost_history": costs, "promotions": promotions,
@@ -174,7 +204,7 @@ def generate_demand(menus, calendar, rng):
         day = context["day_index"]
         # 일별 공통 잡음은 평균 1인 lognormal이다. 셀별 Poisson 잡음과 구분한다.
         noise = rng.lognormvariate(-0.04**2 / 2, 0.04)
-        growth = 1.06 if day >= 68 else 1.0
+        growth = 1.06 if day >= LATE_GROWTH_START_DAY else 1.0
         rainy = context["weather"] == "RAIN"
         delivery_share = 0.72 if rainy else 0.43
         weather_factor = 0.98 if rainy else 1.0
@@ -319,20 +349,57 @@ def generate_dataset(seed=42, start_date=DEFAULT_START, include_bundles=True):
                               "category": menu["category"], "initial_list_price": menu["base_price"]}
                              for menu in menus],
                    "daily_context": calendar, "orders": orders, "order_items": items})
-    truth = {"schema_version": 1, "seed": seed, "start_date": start_date, "days": DAYS,
+    origin_counts = Counter(row["origin"] for row in origins)
+    added_quantities, removed_quantities, incremental_quantities = Counter(), Counter(), Counter()
+    for basket in baskets:
+        if "_bundle_origin" not in basket:
+            continue
+        actual = Counter(basket["menu_ids"])
+        if basket["_bundle_origin"] == "incremental":
+            incremental_quantities.update(actual)
+        else:
+            original = Counter(basket["_original_menu_ids"])
+            added_quantities.update(actual - original)
+            removed_quantities.update(original - actual)
+    bundle_order_ids = {
+        row["order_id"] for row in orders
+        if BUNDLE_RULES["start_day"] <= row["day_index"] <= BUNDLE_RULES["end_day"]
+    }
+    observed_bundle_items = [row for row in items if row["order_id"] in bundle_order_ids]
+    truth = {"schema_version": 2, "seed": seed, "start_date": start_date, "days": DAYS,
              "menus": menus, "day_factors": DAY_FACTORS, "hour_weights": HOUR_WEIGHTS,
              "rain_probability": 0.28, "rain_total_demand_factor": 0.98,
              "delivery_share": {"CLEAR": 0.43, "RAIN": 0.72},
              "day_noise_log_sigma": 0.04, "late_growth_factor": 1.06,
-             "late_growth_start_day": 68, "chicken_cola_attach_probability": 0.28,
+             "late_growth_start_day": LATE_GROWTH_START_DAY,
+             "cost_shock_day": COST_SHOCK_DAY,
+             "intermediate_cost_day": INTERMEDIATE_COST_DAY,
+             "chicken_cola_attach_probability": 0.28,
              "platform_rates": PLATFORM_RATE, "payment_rates": PAYMENT_RATE,
+             "intervention_rules": {"price": PRICE_EXPERIMENTS,
+                                    "promotion": PROMOTION_EXPERIMENTS},
              "demand_audit": demand_audit,
              "bundle_rules": BUNDLE_RULES, "bundles_enabled": include_bundles,
              "bundle_audit": {"origins": origins,
+                              "period": [BUNDLE_RULES["start_day"], BUNDLE_RULES["end_day"]],
+                              "origin_counts": dict(origin_counts),
+                              "converted_existing_orders": sum(
+                                  origin_counts[key] for key in ("chicken_only", "copurchase", "other_main")
+                              ),
+                              "incremental_orders": origin_counts["incremental"],
+                              "added_menu_quantities": dict(added_quantities),
+                              "removed_menu_quantities": dict(removed_quantities),
+                              "incremental_menu_quantities": dict(incremental_quantities),
                               "no_bundle_order_count": len(control_orders),
                               "no_bundle_menu_quantities": dict(Counter(row["menu_id"] for row in control_items)),
                               "no_bundle_net_sales": sum(row["net_sales"] for row in control_orders),
-                              "no_bundle_contribution_profit": sum(row["contribution_profit"] for row in control_orders)},
+                              "no_bundle_contribution_profit": sum(row["contribution_profit"] for row in control_orders),
+                              "observed_order_count": len(bundle_order_ids),
+                              "observed_menu_quantities": dict(Counter(row["menu_id"] for row in observed_bundle_items)),
+                              "observed_net_sales": sum(row["net_sales"] for row in orders if row["order_id"] in bundle_order_ids),
+                              "observed_contribution_profit": sum(
+                                  row["contribution_profit"] for row in orders if row["order_id"] in bundle_order_ids
+                              )},
              "assumptions": ["주문당 주메뉴 1개; 사이드/음료는 조건부 독립 부가구매",
                              "수요는 일별 공통 lognormal 잡음에 조건부 Poisson",
                              "대조 수요는 동일 난수·날씨·요일에서 가격/프로모션만 제거한 가상 정답",
