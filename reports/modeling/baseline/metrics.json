@@ -1,0 +1,55 @@
+{
+  "target": "units_sold",
+  "train_days": 60,
+  "train_rows": 10560,
+  "features": [
+    "menu_id",
+    "channel",
+    "weather",
+    "hour",
+    "weekday",
+    "is_weekend",
+    "is_lunch",
+    "is_dinner",
+    "time_index",
+    "price_ratio",
+    "promotion_discount_ratio",
+    "bundle_available",
+    "bundle_price_ratio"
+  ],
+  "ground_truth_used": false,
+  "splits": {
+    "validation": {
+      "rows": 2640,
+      "model": {
+        "mae": 0.9175555672507821,
+        "rmse": 1.2214364008277974,
+        "mean_actual": 1.3390151515151516,
+        "mean_predicted": 1.3587748595957048
+      },
+      "historical_benchmark": {
+        "mae": 0.9589909511784511,
+        "rmse": 1.3043518958455373,
+        "mean_actual": 1.3390151515151516,
+        "mean_predicted": 1.2912300084175086
+      },
+      "mae_improvement": 0.04320727309965888
+    },
+    "test": {
+      "rows": 2640,
+      "model": {
+        "mae": 0.9493389965890837,
+        "rmse": 1.2552746370751362,
+        "mean_actual": 1.3685606060606061,
+        "mean_predicted": 1.3955248052171327
+      },
+      "historical_benchmark": {
+        "mae": 0.978582702020202,
+        "rmse": 1.3200859850504008,
+        "mean_actual": 1.3685606060606061,
+        "mean_predicted": 1.295775462962963
+      },
+      "mae_improvement": 0.029883734272787676
+    }
+  }
+}

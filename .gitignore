@@ -28,6 +28,7 @@ data/*.csv
 data/*.json
 data/**/*.csv
 data/**/*.json
+reports/**/predictions.csv
 
 # Exception: keep directory
 !data/.gitkeep

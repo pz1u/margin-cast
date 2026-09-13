@@ -76,3 +76,14 @@ margin-cast/
 학습 패널은 `data/processed/demand_panel.csv`, 검증 결과는 같은 폴더의
 `panel_validation.json`에 생성되며 Git에서 제외됩니다.
 EDA 결과는 [관측 데이터 EDA](reports/eda/README.md)에서 확인할 수 있습니다.
+
+## 수요 기준 모델
+
+Day 1~60을 학습하고 Validation 15일, Test 15일을 시간순으로 평가합니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m src.train_demand_model
+```
+
+0판매 셀을 포함한 Poisson 회귀 결과와 과거 조건부 평균 기준선 비교는
+[수요 기준 모델 평가](reports/modeling/baseline/README.md)에 저장됩니다.
