@@ -32,6 +32,8 @@ class EdaTests(unittest.TestCase):
         self.assertEqual(summary["totals"]["units_sold"], 20676)
         self.assertEqual(summary["bundle_observed"]["orders_with_bundle"], 197)
         self.assertGreater(summary["association_before_bundle"]["lift"], 1)
+        self.assertEqual(summary["modeling_contract"]["target"], "units_sold")
+        self.assertIn("contribution_profit", summary["modeling_contract"]["exclude_from_demand_features"])
 
     def test_report_and_charts_are_created(self):
         output = self.root / "report"

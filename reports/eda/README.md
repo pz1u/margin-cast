@@ -62,6 +62,16 @@
 이 분할은 미래 데이터를 과거 학습에 섞지 않는다. 다만 세트 실험이 Day 75~81이라
 Validation과 Test에 걸치므로 세트 효과 평가에는 별도 실험 설계가 필요하다.
 
+## 다음 모델의 입력 계약
+
+- 목표값: `units_sold`.
+- 예측 시점에 이미 알 수 있는 달력·메뉴·채널·가격·예약된 할인/세트·당시 원가를 입력으로 사용한다.
+- 날씨: 백테스트에서는 관측 날씨, 미래 예측에서는 예보 또는 시나리오를 사용한다.
+- 판매 후에 결정되는 다음 컬럼은 수요 모델 입력에서 제외한다: `units_sold`, `order_count`, `bundle_units`, `promotion_units`, `gross_sales`, `discount_amount`, `net_sales`, `ingredient_cost`, `platform_fee`, `payment_fee`, `additional_promotion_cost`, `contribution_profit`.
+
+`regular_paid_unit_price`는 일반 판매·프로모션의 예정 단가다. 세트 실험 중에는 일반 단가와
+세트 가격이 동시에 존재하므로 `bundle_available`, `bundle_price`를 별도 시나리오 변수로 사용한다.
+
 ## 해석 한계
 
 - 실험 전후 비교는 날씨와 표본 변동을 통제한 인과효과가 아니다.

@@ -14,9 +14,9 @@ plt.rcParams["font.family"] = "Malgun Gothic"
 plt.rcParams["axes.unicode_minus"] = False
 
 try:
-    from .prepare_analysis_data import load_observed_tables
+    from .prepare_analysis_data import MONEY_COLUMNS, load_observed_tables
 except ImportError:
-    from prepare_analysis_data import load_observed_tables
+    from prepare_analysis_data import MONEY_COLUMNS, load_observed_tables
 
 
 EVENT_COLORS = {
@@ -151,6 +151,38 @@ def build_eda_summary(panel, tables):
         "association_before_bundle": association,
         "bundle_observed": {"orders_with_bundle": bundle_order_count},
         "time_split": split_summary.to_dict("records"),
+        "modeling_contract": {
+            "target": "units_sold",
+            "known_or_scenario_features": [
+                "date",
+                "day_index",
+                "weekday",
+                "hour",
+                "channel",
+                "menu_id",
+                "category",
+                "is_weekend",
+                "is_rain",
+                "is_lunch",
+                "is_dinner",
+                "time_index",
+                "initial_list_price",
+                "offered_list_price",
+                "promotion_discount",
+                "regular_paid_unit_price",
+                "bundle_available",
+                "bundle_price",
+                "unit_cost",
+            ],
+            "exclude_from_demand_features": [
+                "units_sold",
+                "order_count",
+                "bundle_units",
+                "promotion_units",
+                *MONEY_COLUMNS,
+            ],
+            "weather_usage": "백테스트에서는 관측 날씨, 미래 예측에서는 예보 또는 시나리오를 사용한다.",
+        },
         "interpretation_limits": [
             "실험 전후 비교는 날씨와 표본 변동을 통제한 인과효과가 아니다.",
             "세트 주문 197건 중 신규 수요와 기존 주문 전환은 POS만으로 구분할 수 없다.",
@@ -241,6 +273,8 @@ def render_markdown(summary):
         for row in summary["observed_experiments"]
     )
     limits = "\n".join(f"- {item}" for item in summary["interpretation_limits"])
+    contract = summary["modeling_contract"]
+    excluded = ", ".join(f"`{column}`" for column in contract["exclude_from_demand_features"])
     return f"""# MarginCast 관측 데이터 EDA
 
 이 보고서는 `ground_truth.json`을 읽지 않고 POS·메뉴·달력·실험 정의 파일만 사용했다.
@@ -294,6 +328,16 @@ def render_markdown(summary):
 
 이 분할은 미래 데이터를 과거 학습에 섞지 않는다. 다만 세트 실험이 Day 75~81이라
 Validation과 Test에 걸치므로 세트 효과 평가에는 별도 실험 설계가 필요하다.
+
+## 다음 모델의 입력 계약
+
+- 목표값: `{contract['target']}`.
+- 예측 시점에 이미 알 수 있는 달력·메뉴·채널·가격·예약된 할인/세트·당시 원가를 입력으로 사용한다.
+- 날씨: {contract['weather_usage']}
+- 판매 후에 결정되는 다음 컬럼은 수요 모델 입력에서 제외한다: {excluded}.
+
+`regular_paid_unit_price`는 일반 판매·프로모션의 예정 단가다. 세트 실험 중에는 일반 단가와
+세트 가격이 동시에 존재하므로 `bundle_available`, `bundle_price`를 별도 시나리오 변수로 사용한다.
 
 ## 해석 한계
 

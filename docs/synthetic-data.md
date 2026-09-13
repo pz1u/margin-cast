@@ -196,7 +196,9 @@ Ground Truth 수량 변조와 저장 파일 변조를 검출하는 테스트가 
 Windows 애플리케이션 제어 정책이 차단했고 샌드박스 밖 실행에서도 같은 오류가 발생했다.
 환경 보안 설정을 바꾸지 않고 생성·검증에 표준 라이브러리만 사용하도록 결정했다.
 Poisson 역누적분포 구현은 표본 평균/분산과 단조 결합을 테스트했으며 셀 평균을 0~100으로 제한한다.
-기존 requirements와 패키지는 유지했지만 향후 Pandas/NumPy를 사용하는 EDA 전에 DLL 문제를 해결해야 한다.
+공식적으로 Python 3.14를 지원하는 NumPy 2.4.4 wheel을 임시 설치해 먼저 검증한 뒤
+프로젝트 가상환경과 `requirements.txt`를 2.4.4로 맞췄다. Pandas·Matplotlib·SciPy·scikit-learn·
+statsmodels 로드, NumPy 선형대수와 PNG 출력을 확인했다. 기존 테스트 19개도 다시 통과했다.
 
 ## 후속 개발 기록
 

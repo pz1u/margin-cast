@@ -195,6 +195,45 @@
       "units_sold": 3613
     }
   ],
+  "modeling_contract": {
+    "target": "units_sold",
+    "known_or_scenario_features": [
+      "date",
+      "day_index",
+      "weekday",
+      "hour",
+      "channel",
+      "menu_id",
+      "category",
+      "is_weekend",
+      "is_rain",
+      "is_lunch",
+      "is_dinner",
+      "time_index",
+      "initial_list_price",
+      "offered_list_price",
+      "promotion_discount",
+      "regular_paid_unit_price",
+      "bundle_available",
+      "bundle_price",
+      "unit_cost"
+    ],
+    "exclude_from_demand_features": [
+      "units_sold",
+      "order_count",
+      "bundle_units",
+      "promotion_units",
+      "gross_sales",
+      "discount_amount",
+      "net_sales",
+      "ingredient_cost",
+      "platform_fee",
+      "payment_fee",
+      "additional_promotion_cost",
+      "contribution_profit"
+    ],
+    "weather_usage": "백테스트에서는 관측 날씨, 미래 예측에서는 예보 또는 시나리오를 사용한다."
+  },
   "interpretation_limits": [
     "실험 전후 비교는 날씨와 표본 변동을 통제한 인과효과가 아니다.",
     "세트 주문 197건 중 신규 수요와 기존 주문 전환은 POS만으로 구분할 수 없다.",
