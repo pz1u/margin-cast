@@ -2,6 +2,7 @@
 
 import argparse
 import csv
+from collections import Counter
 from datetime import date, datetime, timedelta
 import hashlib
 import json
@@ -17,6 +18,9 @@ HOUR_WEIGHTS = {11: 0.8, 12: 1.8, 13: 1.6, 14: 0.5, 15: 0.4,
 DAY_FACTORS = [0.94, 0.96, 0.98, 1.00, 1.08, 1.18, 1.12]
 PLATFORM_RATE = {"STORE": 0.0, "DELIVERY": 0.15}
 PAYMENT_RATE = {"STORE": 0.02, "DELIVERY": 0.03}
+BUNDLE_RULES = {"start_day": 75, "end_day": 81, "price": 10000,
+                "chicken_only_take_rate": 0.35, "copurchase_take_rate": 0.65,
+                "other_main_switch_rate": 0.025, "incremental_rate": 0.12}
 
 
 def create_menu_config():
@@ -132,7 +136,16 @@ def generate_event_tables(menus, start_date):
     ]:
         experiments.append({"experiment_id": identifier, "kind": kind, "menu_id": "M01",
                             "start_date": event_date(first), "end_date": event_date(last), "value": value})
-    return {"menu_cost_history": costs, "promotions": promotions, "experiments": experiments}
+    bundles = [{"bundle_id": "B01", "bundle_name": "치킨마요+콜라",
+                "main_menu_id": "M01", "drink_menu_id": "M06",
+                "start_date": event_date(BUNDLE_RULES["start_day"]),
+                "end_date": event_date(BUNDLE_RULES["end_day"]),
+                "bundle_price": BUNDLE_RULES["price"]}]
+    experiments.append({"experiment_id": "E04", "kind": "BUNDLE", "menu_id": "M01",
+                        "start_date": bundles[0]["start_date"], "end_date": bundles[0]["end_date"],
+                        "value": BUNDLE_RULES["price"]})
+    return {"menu_cost_history": costs, "promotions": promotions,
+            "experiments": experiments, "bundles": bundles}
 
 
 def calculate_item_amounts(list_price, discount, cost, channel, quantity=1,
@@ -216,37 +229,91 @@ def generate_orders(menus, cells, rng):
     return baskets
 
 
+def generate_bundle_events(baskets, rng):
+    """기존 주문은 교체하고, 신규 고객만 별도 주문으로 추가한다."""
+    result = []
+    candidates_by_day = {}
+    for original in baskets:
+        basket = {**original, "menu_ids": original["menu_ids"].copy()}
+        result.append(basket)
+        if not BUNDLE_RULES["start_day"] <= basket["day_index"] <= BUNDLE_RULES["end_day"]:
+            continue
+        main = basket["menu_ids"][0]
+        if main == "M01":
+            candidates_by_day.setdefault(basket["day_index"], []).append(original)
+            origin = "copurchase" if "M06" in basket["menu_ids"] else "chicken_only"
+            take_rate = BUNDLE_RULES[f"{origin}_take_rate"]
+        else:
+            origin, take_rate = "other_main", BUNDLE_RULES["other_main_switch_rate"]
+        if rng.random() < take_rate:
+            basket["_bundle_origin"] = origin
+            basket["_original_menu_ids"] = basket["menu_ids"].copy()
+            basket["menu_ids"][0] = "M01"
+            if "M06" not in basket["menu_ids"]:
+                basket["menu_ids"].append("M06")
+            basket["bundle_id"] = "B01"
+    # 신규 수요의 채널/시간대는 같은 날의 기존 치킨마요 고객 구성에서 표본 추출한다.
+    for candidates in candidates_by_day.values():
+        count = poisson_quantile(len(candidates) * BUNDLE_RULES["incremental_rate"], rng.random())
+        for _ in range(count):
+            template = rng.choice(candidates)
+            timestamp = (datetime.fromisoformat(template["date"]) + timedelta(
+                hours=template["hour"], seconds=rng.randrange(3600))).isoformat()
+            result.append({**template, "ordered_at": timestamp, "menu_ids": ["M01", "M06"],
+                           "bundle_id": "B01", "_bundle_origin": "incremental",
+                           "_original_menu_ids": []})
+    return result
+
+
 def generate_order_items(menus, baskets):
     menu_lookup = {menu["menu_id"]: menu for menu in menus}
     orders, items = [], []
     # 시각 순서로 ID를 부여해 다시 실행해도 CSV 바이트가 같도록 한다.
     for number, basket in enumerate(sorted(baskets, key=lambda row: row["ordered_at"]), 1):
         order_id = f"O{number:06d}"
-        order = {key: value for key, value in basket.items() if key not in {"menu_ids", "bundle_id"}}
+        order = {key: value for key, value in basket.items()
+                 if key not in {"menu_ids", "bundle_id"} and not key.startswith("_")}
         order["order_id"] = order_id
         amounts = []
         for menu_id in basket["menu_ids"]:
             menu = menu_lookup[menu_id]
             price, discount, promotion_id = menu_terms(menu, basket["day_index"])
+            bundle_id = basket["bundle_id"] if menu_id in {"M01", "M06"} else ""
+            if bundle_id:
+                # 세트 할인은 단품 정가 비례로 배분하고 마지막 구성품이 원 단위 잔액을 받는다.
+                main_price = menu_lookup["M01"]["base_price"]
+                drink_price = menu_lookup["M06"]["base_price"]
+                total_discount = main_price + drink_price - BUNDLE_RULES["price"]
+                main_discount = round(total_discount * main_price / (main_price + drink_price))
+                discount = main_discount if menu_id == "M01" else total_discount - main_discount
             cost = unit_cost(menu, basket["day_index"])
             financials = calculate_item_amounts(price, discount, cost, basket["channel"])
             amounts.append(financials)
             items.append({"order_item_id": f"I{len(items) + 1:06d}", "order_id": order_id,
                           "menu_id": menu_id, "quantity": 1, "list_price": price,
                           "unit_cost": cost, "promotion_id": promotion_id,
-                          "bundle_id": basket["bundle_id"], **financials})
+                          "bundle_id": bundle_id, **financials})
         order.update({key: sum(amount[key] for amount in amounts) for key in amounts[0]})
         orders.append(order)
     return orders, items
 
 
-def generate_dataset(seed=42, start_date=DEFAULT_START):
+def generate_dataset(seed=42, start_date=DEFAULT_START, include_bundles=True):
     start_date = date.fromisoformat(start_date).isoformat()
     menus = create_menu_config()
     calendar = generate_weather(random_stream(seed, "weather"), start_date)
     cells, demand_audit = generate_demand(menus, calendar, random_stream(seed, "demand"))
     baskets = generate_orders(menus, cells, random_stream(seed, "baskets"))
+    control_baskets = [row for row in baskets
+                       if BUNDLE_RULES["start_day"] <= row["day_index"] <= BUNDLE_RULES["end_day"]]
+    control_orders, control_items = generate_order_items(menus, control_baskets)
+    if include_bundles:
+        baskets = generate_bundle_events(baskets, random_stream(seed, "bundles"))
     orders, items = generate_order_items(menus, baskets)
+    origins = [{"order_id": order["order_id"], "origin": basket["_bundle_origin"],
+                "original_menu_ids": basket["_original_menu_ids"]}
+               for order, basket in zip(orders, sorted(baskets, key=lambda row: row["ordered_at"]))
+               if "_bundle_origin" in basket]
     tables = generate_event_tables(menus, start_date)
     tables.update({"menus": [{"menu_id": menu["menu_id"], "menu_name": menu["menu_name"],
                               "category": menu["category"], "initial_list_price": menu["base_price"]}
@@ -260,11 +327,19 @@ def generate_dataset(seed=42, start_date=DEFAULT_START):
              "late_growth_start_day": 68, "chicken_cola_attach_probability": 0.28,
              "platform_rates": PLATFORM_RATE, "payment_rates": PAYMENT_RATE,
              "demand_audit": demand_audit,
+             "bundle_rules": BUNDLE_RULES, "bundles_enabled": include_bundles,
+             "bundle_audit": {"origins": origins,
+                              "no_bundle_order_count": len(control_orders),
+                              "no_bundle_menu_quantities": dict(Counter(row["menu_id"] for row in control_items)),
+                              "no_bundle_net_sales": sum(row["net_sales"] for row in control_orders),
+                              "no_bundle_contribution_profit": sum(row["contribution_profit"] for row in control_orders)},
              "assumptions": ["주문당 주메뉴 1개; 사이드/음료는 조건부 독립 부가구매",
                              "수요는 일별 공통 lognormal 잡음에 조건부 Poisson",
                              "대조 수요는 동일 난수·날씨·요일에서 가격/프로모션만 제거한 가상 정답",
                              "원가 인상은 매입가 사건이며 수요를 직접 바꾸지 않음",
-                             "기여이익은 고정비·세금 제외; 할인액 중복 차감 없음"],
+                             "기여이익은 고정비·세금 제외; 할인액 중복 차감 없음",
+                             "세트 전환은 기존 주문을 교체; incremental 유형만 신규 주문",
+                             "세트 실험은 고정 전환율 가정이며 반응 추정 모델이 아님"],
              "runtime": {"python": sys.version.split()[0], "random": "MT19937"}}
     return tables, truth
 

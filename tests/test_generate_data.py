@@ -80,13 +80,43 @@ class DatasetTests(unittest.TestCase):
     def test_hidden_parameters_are_not_observed_features(self):
         for table in self.tables.values():
             self.assertFalse({"price_elasticity", "base_demand", "promotion_lift",
-                              "no_intervention_count"} & set(table[0]))
+                              "no_intervention_count", "origin", "_bundle_origin",
+                              "original_menu_ids"} & set(table[0]))
 
     def test_reproducibility(self):
         second, truth = generate_dataset()
         self.assertEqual(truth, self.truth)
         for name in self.tables:
             self.assertEqual(self.tables[name], second[name])
+
+    def test_bundle_replaces_orders_and_preserves_components(self):
+        control, _ = generate_dataset(include_bundles=False)
+        origins = self.truth["bundle_audit"]["origins"]
+        incremental = sum(row["origin"] == "incremental" for row in origins)
+        self.assertGreater(incremental, 0)
+        self.assertEqual(len(self.tables["orders"]) - len(control["orders"]), incremental)
+        self.assertEqual({row["origin"] for row in origins},
+                         {"incremental", "chicken_only", "copurchase", "other_main"})
+        grouped = defaultdict(list)
+        for item in self.tables["order_items"]:
+            if item["bundle_id"]:
+                grouped[item["order_id"]].append(item)
+        self.assertEqual(set(grouped), {row["order_id"] for row in origins})
+        for components in grouped.values():
+            self.assertEqual({row["menu_id"] for row in components}, {"M01", "M06"})
+            self.assertEqual(len(components), 2)
+            self.assertEqual(sum(row["net_sales"] for row in components), 10000)
+            self.assertEqual(sum(row["discount_amount"] for row in components), 1000)
+        # 치킨마요 증가량은 다른 주메뉴에서 전환한 고객과 신규 고객의 합이어야 한다.
+        chicken = lambda tables: sum(row["quantity"] for row in tables["order_items"]
+                                     if row["menu_id"] == "M01")
+        self.assertEqual(chicken(self.tables) - chicken(control),
+                         sum(row["origin"] in {"incremental", "other_main"} for row in origins))
+        # 세트 켜기/끄기가 실험 외 기간의 난수와 거래 금액에 영향을 주면 안 된다.
+        def outside(tables):
+            return [{key: value for key, value in row.items() if key != "order_id"}
+                    for row in tables["orders"] if not 75 <= row["day_index"] <= 81]
+        self.assertEqual(outside(self.tables), outside(control))
 
 
 if __name__ == "__main__":
