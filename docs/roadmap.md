@@ -12,6 +12,7 @@
 - Phase 8 할인·세트 Simulation: 완료
 - Phase 9 Decision Engine: 완료
 - Phase 10 Agent: 도구 등록 직전 준비 완료, 사용자 주도 구현 대기
+- Phase 11 Web·API: HTTP API 경계 완료, 웹사이트 화면·배포 대기
 
 v1 데이터로 만든 시뮬레이션·도구 계약은 전체 연결을 검증한 프로토타입이다.
 Phase 3~4 결과는 v2 데이터로 다시 실행해 갱신했고 이후 단계도 같은 기준으로 검증한다.

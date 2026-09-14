@@ -158,3 +158,15 @@ AI 에이전트가 계산 결과를 직접 생성하지 않고 검증된 엔진�
 ```
 
 연동 규칙과 남은 작업은 [에이전트 도구 연동 계약](docs/agent-tool-contract.md)을 참고하세요.
+
+## HTTP API
+
+Agent와 웹사이트는 같은 계산 경계를 HTTP로 사용할 수 있습니다. 서버는 LLM을 실행하지 않고
+기능 조회, 가격·할인 비교와 세트 시뮬레이션만 제공합니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m src.http_api
+```
+
+기본 접속 주소는 `http://127.0.0.1:8000`입니다. 경로와 요청 형식은
+[MarginCast HTTP API](docs/http-api.md)를 참고하세요.
