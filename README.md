@@ -81,7 +81,7 @@ EDA 결과는 [관측 데이터 EDA](reports/eda/README.md)에서 확인할 수 
 
 ## 수요 기준 모델
 
-Day 1~60을 학습하고 Validation 15일, Test 15일을 시간순으로 평가합니다.
+Day 1~120을 학습하고 Validation 30일, Test 30일을 시간순으로 평가합니다.
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.train_demand_model
@@ -103,6 +103,18 @@ M01·M02의 가격 외 할인 노출 효과를 분리해 추정합니다.
 추정값과 가격별 수요 배수는
 [가격탄력성 보고서](reports/modeling/elasticity/README.md)와
 [Ground Truth 대비 효과 평가](reports/modeling/effects/README.md)에서 확인할 수 있습니다.
+
+## 기상청 단기예보
+
+기상청 API허브 인증키와 매장 격자 좌표를 입력하면 TMP·PCP·PTY·REH·POP·SKY를
+시뮬레이션용 시간별 문맥으로 변환합니다.
+
+```powershell
+Copy-Item .env.example .env
+.\.venv\Scripts\python.exe -m src.weather_forecast --nx 60 --ny 127
+```
+
+설정과 예보 범위의 한계는 [기상청 단기예보 연동](docs/weather-api.md)을 참고하세요.
 
 ## 가격·할인 시뮬레이션
 
