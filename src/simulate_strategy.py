@@ -45,14 +45,72 @@ def validate_scenarios(scenarios):
             raise ValueError("정가는 양수이고 할인액은 정가보다 작아야 합니다.")
 
 
-def build_reference_forecast(panel, menu_id="M01", horizon_days=14):
+def _build_kma_reference(frame, panel, forecasts, menu_id, horizon_days):
+    forecast = pd.DataFrame(forecasts).copy()
+    required = {"date", "time", "is_rain"}
+    missing = sorted(required - set(forecast.columns))
+    if missing:
+        raise ValueError(f"미래 날씨 문맥에 필수 값이 없습니다: {missing}")
+    forecast["date"] = pd.to_datetime(forecast["date"])
+    forecast["hour"] = forecast["time"].str.slice(0, 2).astype(int)
+    panel_last_date = pd.to_datetime(panel["date"]).max()
+    forecast = forecast[forecast["date"] > panel_last_date]
+    available_dates = sorted(forecast["date"].unique())
+    if len(available_dates) < horizon_days:
+        raise ValueError(
+            f"미래 예보는 {len(available_dates)}일뿐입니다. 요청한 {horizon_days}일을 채울 수 없습니다."
+        )
+    selected_dates = available_dates[:horizon_days]
+    forecast = forecast[forecast["date"].isin(selected_dates)]
+
+    latest = frame[(frame["menu_id"] == menu_id) & (frame["day_index"] == frame["day_index"].max())]
+    template = latest.set_index(["hour", "channel"])
+    records = []
+    for offset, forecast_date in enumerate(selected_dates, start=1):
+        day_forecast = forecast[forecast["date"] == forecast_date]
+        for hour in range(11, 22):
+            distances = (day_forecast["hour"] - hour).abs()
+            nearest = day_forecast.loc[distances.idxmin()]
+            for channel in ("STORE", "DELIVERY"):
+                row = template.loc[(hour, channel)].copy()
+                row["date"] = pd.Timestamp(forecast_date)
+                row["day_index"] = int(frame["day_index"].max()) + offset
+                row["weekday"] = int(pd.Timestamp(forecast_date).weekday())
+                row["hour"] = hour
+                row["channel"] = channel
+                row["weather"] = "RAIN" if bool(nearest["is_rain"]) else "CLEAR"
+                row["is_rain"] = int(bool(nearest["is_rain"]))
+                row["is_weekend"] = int(row["weekday"] >= 5)
+                row["is_lunch"] = int(hour in (12, 13))
+                row["is_dinner"] = int(hour in (18, 19, 20))
+                row["time_index"] = (row["day_index"] - 1) * 24 + hour
+                row["forecast_at"] = nearest.get("forecast_at")
+                row["tmp_c"] = nearest.get("tmp_c")
+                row["pcp_raw"] = nearest.get("pcp_raw")
+                row["pcp_mm_estimate"] = nearest.get("pcp_mm_estimate")
+                row["pty_code"] = nearest.get("pty_code")
+                row["reh_pct"] = nearest.get("reh_pct")
+                records.append(row)
+    return pd.DataFrame(records).reset_index(drop=True)
+
+
+def build_reference_forecast(panel, menu_id="M01", horizon_days=14, forecasts=None):
     frame = add_model_features(panel)
     train = frame[frame["split"] == "train"]
     model = build_model().fit(
         train[CATEGORICAL_FEATURES + NUMERIC_FEATURES], train["units_sold"]
     )
-    last_days = sorted(frame["day_index"].unique())[-horizon_days:]
-    reference = frame[(frame["menu_id"] == menu_id) & frame["day_index"].isin(last_days)].copy()
+    if forecasts is None:
+        last_days = sorted(frame["day_index"].unique())[-horizon_days:]
+        reference = frame[
+            (frame["menu_id"] == menu_id) & frame["day_index"].isin(last_days)
+        ].copy()
+        context_source = "observed_history"
+    else:
+        reference = _build_kma_reference(
+            frame, panel, forecasts, menu_id=menu_id, horizon_days=horizon_days
+        )
+        context_source = "kma_forecast"
     baseline_price = int(reference["initial_list_price"].iloc[0])
     reference["offered_list_price"] = baseline_price
     reference["regular_paid_unit_price"] = baseline_price
@@ -63,7 +121,7 @@ def build_reference_forecast(panel, menu_id="M01", horizon_days=14):
     reference["base_mean"] = np.clip(
         model.predict(reference[CATEGORICAL_FEATURES + NUMERIC_FEATURES]), 0, None
     )
-    return reference, baseline_price
+    return reference, baseline_price, context_source
 
 
 def summarize_distribution(values):
@@ -146,11 +204,15 @@ def run_simulation(
     horizon_days=14,
     simulations=10_000,
     seed=42,
+    weather_forecast_path=None,
 ):
     panel = pd.read_csv(panel_path, encoding="utf-8-sig")
     elasticity_report = estimate_price_elasticity(panel, menu_id=menu_id)
-    reference, baseline_price = build_reference_forecast(
-        panel, menu_id=menu_id, horizon_days=horizon_days
+    forecasts = None
+    if weather_forecast_path is not None:
+        forecasts = json.loads(Path(weather_forecast_path).read_text(encoding="utf-8"))
+    reference, baseline_price, context_source = build_reference_forecast(
+        panel, menu_id=menu_id, horizon_days=horizon_days, forecasts=forecasts
     )
     scenarios = DEFAULT_SCENARIOS if scenarios is None else scenarios
     results = simulate_scenarios(
@@ -164,7 +226,12 @@ def run_simulation(
     report = {
         "menu_id": menu_id,
         "horizon_days": horizon_days,
-        "reference_context": f"마지막 {horizon_days}일의 요일·시간·채널·날씨와 현재 원가",
+        "reference_context": (
+            f"미래 {horizon_days}일의 기상청 예보·요일·시간·채널과 현재 원가"
+            if context_source == "kma_forecast"
+            else f"마지막 {horizon_days}일의 요일·시간·채널·관측 날씨와 현재 원가"
+        ),
+        "weather_context_source": context_source,
         "baseline_price": baseline_price,
         "simulations": simulations,
         "seed": seed,
@@ -173,7 +240,11 @@ def run_simulation(
         "ground_truth_used": False,
         "scenarios": results,
         "limitations": [
-            "최근 14일 관측 날씨를 시나리오 문맥으로 재사용했으며 실제 미래에는 예보가 필요하다.",
+            (
+                "기상청 예보를 영업시간별 가장 가까운 발표값으로 정렬했다."
+                if context_source == "kma_forecast"
+                else "최근 관측 날씨를 시나리오 문맥으로 재사용했으며 실제 미래에는 예보가 필요하다."
+            ),
             "1,000원 할인은 관측 실험과 같은 프로모션 노출 효과가 재현된다고 가정한다.",
             "세트 구성은 신규 수요와 잠식 효과를 관측 데이터만으로 분리할 수 없어 이 비교에 포함하지 않았다.",
         ],
@@ -259,9 +330,14 @@ def main():
     parser.add_argument("--output-dir", type=Path, default=root / "reports" / "simulation")
     parser.add_argument("--simulations", type=int, default=10_000)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--weather-forecast", type=Path)
     args = parser.parse_args()
     report = run_simulation(
-        args.panel, args.output_dir, simulations=args.simulations, seed=args.seed
+        args.panel,
+        args.output_dir,
+        simulations=args.simulations,
+        seed=args.seed,
+        weather_forecast_path=args.weather_forecast,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
 

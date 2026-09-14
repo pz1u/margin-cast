@@ -37,6 +37,16 @@ KMA_SERVICE_KEY=발급받은_기상청_API허브_인증키
 0.5mm, `30.0~50.0mm`는 40mm로 변환하며 API 원문도 함께 보존한다.
 연장기간에 숫자만 오는 정성 강수코드는 mm로 환산하지 않고 별도 코드로 보존한다.
 
+생성한 파일은 가격·할인 시뮬레이션의 미래 문맥으로 전달할 수 있다.
+
+```powershell
+.\.venv\Scripts\python.exe -m src.simulate_strategy `
+  --weather-forecast data\processed\weather_forecast.json
+```
+
+엔진은 예보 날짜의 11~21시 각 영업시간에 가장 가까운 예보값을 연결한다. 요청한 기간보다
+미래 예보 날짜가 적으면 관측 날씨를 반복하지 않고 오류를 반환한다.
+
 ## 범위와 한계
 
 현재 연동은 단기예보가 제공하는 기간까지만 가져온다. 기상청은 단기예보 기간을 최대

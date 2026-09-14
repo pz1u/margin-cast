@@ -190,7 +190,7 @@ class MarginCastDecisionService:
             self._reference_cache[reference_key] = build_reference_forecast(
                 panel, menu_id=menu_id, horizon_days=horizon_days
             )
-        reference, baseline_price = self._reference_cache[reference_key]
+        reference, baseline_price, _ = self._reference_cache[reference_key]
         normalized = [dict(value) for value in scenarios]
         reference_count = sum(
             value["list_price"] - value["discount"] == baseline_price

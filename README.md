@@ -112,8 +112,11 @@ M01·M02의 가격 외 할인 노출 효과를 분리해 추정합니다.
 ```powershell
 Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m src.weather_forecast --nx 60 --ny 127
+.\.venv\Scripts\python.exe -m src.simulate_strategy `
+  --weather-forecast data\processed\weather_forecast.json
 ```
 
+시뮬레이션은 요청 일수보다 실제 미래 예보가 짧으면 최근 날씨로 채우지 않고 오류를 반환합니다.
 설정과 예보 범위의 한계는 [기상청 단기예보 연동](docs/weather-api.md)을 참고하세요.
 
 ## 가격·할인 시뮬레이션

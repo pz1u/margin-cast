@@ -2,9 +2,11 @@ from pathlib import Path
 import tempfile
 import unittest
 
+import pandas as pd
+
 from src.generate_data import generate_dataset, save_dataset
 from src.prepare_analysis_data import prepare_analysis_data
-from src.simulate_strategy import run_simulation, validate_scenarios
+from src.simulate_strategy import build_reference_forecast, run_simulation, validate_scenarios
 
 
 class StrategySimulationTests(unittest.TestCase):
@@ -15,7 +17,7 @@ class StrategySimulationTests(unittest.TestCase):
         tables, truth = generate_dataset()
         save_dataset(tables, truth, cls.root)
         cls.panel_path = cls.root / "processed" / "demand_panel.csv"
-        prepare_analysis_data(cls.root, cls.panel_path)
+        cls.panel, _ = prepare_analysis_data(cls.root, cls.panel_path)
         (cls.root / "ground_truth.json").unlink()
 
     @classmethod
@@ -59,6 +61,34 @@ class StrategySimulationTests(unittest.TestCase):
     def test_invalid_scenario_is_rejected(self):
         with self.assertRaises(ValueError):
             validate_scenarios([{"name": "오류", "list_price": 9000, "discount": 9000}])
+
+    def test_future_weather_replaces_observed_context_without_filling_missing_days(self):
+        last_date = self.panel["date"].max()
+        forecasts = []
+        for offset in (1, 2):
+            date = (last_date + pd.Timedelta(days=offset)).strftime("%Y-%m-%d")
+            for hour in (9, 12, 15, 18, 21):
+                forecasts.append(
+                    {
+                        "date": date,
+                        "time": f"{hour:02d}:00",
+                        "forecast_at": f"{date}T{hour:02d}:00:00+09:00",
+                        "is_rain": offset == 2,
+                        "tmp_c": 24.0,
+                        "pcp_raw": "강수없음" if offset == 1 else "1.0mm 미만",
+                        "pcp_mm_estimate": 0.0 if offset == 1 else 0.5,
+                        "pty_code": 0 if offset == 1 else 1,
+                        "reh_pct": 60.0,
+                    }
+                )
+        reference, _, source = build_reference_forecast(
+            self.panel, horizon_days=2, forecasts=forecasts
+        )
+        self.assertEqual(source, "kma_forecast")
+        self.assertEqual(len(reference), 2 * 11 * 2)
+        self.assertEqual(set(reference["weather"]), {"CLEAR", "RAIN"})
+        with self.assertRaises(ValueError):
+            build_reference_forecast(self.panel, horizon_days=3, forecasts=forecasts)
 
 
 if __name__ == "__main__":
