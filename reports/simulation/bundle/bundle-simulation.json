@@ -1,0 +1,119 @@
+{
+  "evidence": {
+    "observed_days": 154,
+    "main_without_drink": {
+      "orders": 5132,
+      "daily_orders": 33.324675324675326,
+      "delivery_share": 0.5153936087295401
+    },
+    "main_with_drink": {
+      "orders": 1996,
+      "daily_orders": 12.96103896103896,
+      "delivery_share": 0.5150300601202404
+    },
+    "other_main": {
+      "orders": 17943,
+      "daily_orders": 116.51298701298701,
+      "delivery_share": 0.5163573538427242
+    },
+    "main_daily_orders": 46.285714285714285,
+    "prices": {
+      "main": 9000.0,
+      "drink": 2000.0
+    },
+    "costs": {
+      "main": 4900.0,
+      "drink": 700.0
+    },
+    "other_main_average": {
+      "price": 9262.302847907262,
+      "cost": 4508.858050493229
+    },
+    "bundle_observed": true,
+    "ground_truth_used": false
+  },
+  "scenario": {
+    "name": "치킨마요 콜라 세트",
+    "bundle_price": 10000,
+    "horizon_days": 14,
+    "simulations": 10000,
+    "seed": 42,
+    "assumptions": {
+      "take_rate": 0.3,
+      "copurchase_take_rate": 0.55,
+      "incremental_demand_rate": 0.1,
+      "cannibalization_rate": 0.02
+    },
+    "orders": {
+      "converted_main_without_drink": {
+        "mean": 139.8092,
+        "p05": 114.0,
+        "p10": 119.0,
+        "p50": 139.0,
+        "p90": 161.0,
+        "p95": 168.0
+      },
+      "converted_existing_copurchase": {
+        "mean": 99.7157,
+        "p05": 79.0,
+        "p10": 84.0,
+        "p50": 99.0,
+        "p90": 116.0,
+        "p95": 122.0
+      },
+      "cannibalized_other_main": {
+        "mean": 32.6024,
+        "p05": 23.0,
+        "p10": 25.0,
+        "p50": 32.0,
+        "p90": 41.0,
+        "p95": 43.0
+      },
+      "incremental": {
+        "mean": 64.4736,
+        "p05": 49.0,
+        "p10": 52.0,
+        "p50": 64.0,
+        "p90": 77.0,
+        "p95": 81.0
+      }
+    },
+    "profit_delta": {
+      "mean": 141278.35932353057,
+      "p05": 78704.7544963172,
+      "p10": 91311.39337304834,
+      "p50": 139482.72872597605,
+      "p90": 193564.629119512,
+      "p95": 209609.79398001413
+    },
+    "success_probability": 1.0,
+    "confidence": {
+      "score": 35.0,
+      "label": "LOW",
+      "is_probability": false,
+      "reason": "신규 수요와 기존 주문 전환·잠식 비율이 관측치가 아닌 시나리오 가정이다."
+    },
+    "ground_truth_used": false,
+    "baseline_contribution_profit": {
+      "mean": 10024634.015,
+      "p05": 9505919.0,
+      "p10": 9618483.0,
+      "p50": 10026805.0,
+      "p90": 10428251.0,
+      "p95": 10535766.0
+    },
+    "scenario_contribution_profit": {
+      "mean": 10165912.37432353,
+      "p05": 9640507.010543045,
+      "p10": 9755997.15078684,
+      "p50": 10169554.149549322,
+      "p90": 10574536.693654211,
+      "p95": 10683603.624835521
+    }
+  },
+  "limitations": [
+    "Take Rate·신규 수요·잠식률은 POS만으로 분리되지 않아 명시적 시나리오 가정으로 받는다.",
+    "한 번의 14일 세트 실험만 관측되어 가격별 세트 반응곡선을 추정하지 않았다.",
+    "고객별 반복 구매와 다른 사이드 메뉴의 교차효과는 포함하지 않았다."
+  ]
+}

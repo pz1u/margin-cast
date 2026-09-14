@@ -132,6 +132,15 @@ Copy-Item .env.example .env
 비교 결과와 해석 한계는
 [Monte Carlo 시뮬레이션 보고서](reports/simulation/README.md)에 저장됩니다.
 
+세트는 관측 장바구니 기회와 사용자가 입력하는 Take Rate·신규 수요율·잠식률을 분리해
+계산합니다. POS만으로 세 값이 식별되지 않으므로 기본 결과의 신뢰도는 `LOW`입니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m src.simulate_bundle
+```
+
+결과는 [세트 전략 시뮬레이션 보고서](reports/simulation/bundle/README.md)에 저장됩니다.
+
 ## AI 에이전트 연동 준비
 
 AI 에이전트가 계산 결과를 직접 생성하지 않고 검증된 엔진을 호출하도록 서비스 경계와

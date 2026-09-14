@@ -9,7 +9,8 @@
 - Phase 5 기상청 API: 단기예보 변환·Simulation 연결 완료, 7일 결합과 실호출 검증 대기
 - Phase 6 Price Simulation: 완료
 - Phase 7 Monte Carlo·Confidence: 완료
-- Phase 8 할인·세트 Simulation: 다음 작업
+- Phase 8 할인·세트 Simulation: 완료
+- Phase 9 Decision Engine: 다음 작업
 
 v1 데이터로 만든 시뮬레이션·도구 계약은 전체 연결을 검증한 프로토타입이다.
 Phase 3~4 결과는 v2 데이터로 다시 실행해 갱신했고 이후 단계도 같은 기준으로 검증한다.
