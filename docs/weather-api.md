@@ -24,11 +24,23 @@ KMA_API_PROVIDER=auto
 
 ## 실행
 
-매장 주소에 대응하는 동네예보 격자 좌표를 전달한다.
+매장 위도·경도를 전달하면 내부에서 기상청 동네예보 격자로 변환한다.
+
+```powershell
+.\.venv\Scripts\python.exe -m src.weather_forecast `
+  --latitude 37.5665 `
+  --longitude 126.9780
+```
+
+이미 격자를 알고 있으면 `nx`, `ny`를 직접 전달할 수도 있다.
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.weather_forecast --nx 60 --ny 127
 ```
+
+위경도는 WGS84 좌표를 사용한다. 변환은 기상청 공식 Lambert 격자 사양을 프로젝트 안에서
+계산하므로 별도의 위치 API나 인증키가 필요하지 않다. 주소 문자열만 알고 있는 경우의 주소→위경도
+변환은 사용자 주소 입력 화면이 생기는 Web 단계에서 지오코딩 공급자를 정해 연결한다.
 
 결과는 기본적으로 `data/processed/weather_forecast.json`에 저장된다. 각 예보시각에는
 기온 `tmp_c`, 강수량 원문 `pcp_raw`, 계산용 강수량 대표값 `pcp_mm_estimate`,
@@ -60,4 +72,5 @@ KMA_API_PROVIDER=auto
 인증키가 없는 개발 환경에서는 실호출하지 않고 고정 응답을 이용한 파서 테스트를 실행한다.
 
 공식 형식은 [기상청 API허브 단기예보](https://apihub.kma.go.kr/apiList.do?seqApi=10),
-예보기간은 [단기예보 기간 확대 안내](https://apihub.kma.go.kr/notice.do?seqNotice=33)를 기준으로 했다.
+예보기간은 [단기예보 기간 확대 안내](https://apihub.kma.go.kr/notice.do?seqNotice=33),
+좌표 변환은 [동네예보 격자영역 정보](https://apihub.kma.go.kr/getAttachFile.do?fileName=%2820240305%29%EB%8F%99%EB%84%A4%EC%98%88%EB%B3%B4+%EA%B2%A9%EC%9E%90%EC%98%81%EC%97%AD+%EC%A0%95%EB%B3%B4.pdf)를 기준으로 했다.

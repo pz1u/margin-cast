@@ -10,6 +10,8 @@ from urllib.parse import unquote
 
 import requests
 
+from src.location_grid import KmaGridError, resolve_grid_coordinates
+
 
 KST = timezone(timedelta(hours=9))
 BASE_TIMES = (2, 5, 8, 11, 14, 17, 20, 23)
@@ -259,8 +261,10 @@ def fetch_village_forecast(
 def main():
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--nx", type=int, required=True, help="동네예보 격자 X 좌표")
-    parser.add_argument("--ny", type=int, required=True, help="동네예보 격자 Y 좌표")
+    parser.add_argument("--nx", type=int, help="동네예보 격자 X 좌표")
+    parser.add_argument("--ny", type=int, help="동네예보 격자 Y 좌표")
+    parser.add_argument("--latitude", type=float, help="매장 위도(WGS84)")
+    parser.add_argument("--longitude", type=float, help="매장 경도(WGS84)")
     parser.add_argument(
         "--output",
         type=Path,
@@ -270,14 +274,29 @@ def main():
     parser.add_argument("--provider", choices=["auto", "data_go", "api_hub"], default="auto")
     args = parser.parse_args()
 
+    try:
+        nx, ny = resolve_grid_coordinates(
+            nx=args.nx,
+            ny=args.ny,
+            latitude=args.latitude,
+            longitude=args.longitude,
+        )
+    except KmaGridError as error:
+        parser.error(str(error))
+
     forecasts = fetch_village_forecast(
-        args.nx, args.ny, env_path=args.env_file, provider=args.provider
+        nx, ny, env_path=args.env_file, provider=args.provider
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(forecasts, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
-    print(json.dumps({"rows": len(forecasts), "output": str(args.output)}, ensure_ascii=False))
+    print(
+        json.dumps(
+            {"rows": len(forecasts), "nx": nx, "ny": ny, "output": str(args.output)},
+            ensure_ascii=False,
+        )
+    )
 
 
 if __name__ == "__main__":
