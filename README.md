@@ -113,6 +113,7 @@ M01·M02의 가격 외 할인 노출 효과를 분리해 추정합니다.
 Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m src.weather_forecast --nx 60 --ny 127
 .\.venv\Scripts\python.exe -m src.simulate_strategy `
+  --horizon-days 4 `
   --weather-forecast data\processed\weather_forecast.json
 ```
 

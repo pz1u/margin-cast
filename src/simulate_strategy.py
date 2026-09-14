@@ -68,15 +68,16 @@ def _build_kma_reference(frame, panel, forecasts, menu_id, horizon_days):
     latest = frame[(frame["menu_id"] == menu_id) & (frame["day_index"] == frame["day_index"].max())]
     template = latest.set_index(["hour", "channel"])
     records = []
-    for offset, forecast_date in enumerate(selected_dates, start=1):
+    for forecast_date in selected_dates:
         day_forecast = forecast[forecast["date"] == forecast_date]
+        day_gap = int((pd.Timestamp(forecast_date) - panel_last_date).days)
         for hour in range(11, 22):
             distances = (day_forecast["hour"] - hour).abs()
             nearest = day_forecast.loc[distances.idxmin()]
             for channel in ("STORE", "DELIVERY"):
                 row = template.loc[(hour, channel)].copy()
                 row["date"] = pd.Timestamp(forecast_date)
-                row["day_index"] = int(frame["day_index"].max()) + offset
+                row["day_index"] = int(frame["day_index"].max()) + day_gap
                 row["weekday"] = int(pd.Timestamp(forecast_date).weekday())
                 row["hour"] = hour
                 row["channel"] = channel
@@ -383,6 +384,7 @@ def main():
     parser.add_argument("--output-dir", type=Path, default=root / "reports" / "simulation")
     parser.add_argument("--simulations", type=int, default=10_000)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--horizon-days", type=int, default=14)
     parser.add_argument("--weather-forecast", type=Path)
     parser.add_argument("--demand-log-sigma", type=float, default=0.08)
     parser.add_argument("--cost-relative-std", type=float, default=0.05)
@@ -390,6 +392,7 @@ def main():
     report = run_simulation(
         args.panel,
         args.output_dir,
+        horizon_days=args.horizon_days,
         simulations=args.simulations,
         seed=args.seed,
         weather_forecast_path=args.weather_forecast,

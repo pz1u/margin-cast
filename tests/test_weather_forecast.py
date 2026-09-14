@@ -15,6 +15,7 @@ from src.weather_forecast import (
     latest_available_base,
     parse_forecast_response,
     precipitation_mm_estimate,
+    resolve_provider,
 )
 
 
@@ -99,11 +100,18 @@ class WeatherForecastTests(unittest.TestCase):
             service_key="secret-key",
             base_datetime=datetime(2026, 9, 14, 5, 0, tzinfo=KST),
             session=session,
+            provider="data_go",
         )
         self.assertEqual(session.call["url"], API_URL)
-        self.assertEqual(session.call["params"]["authKey"], "secret-key")
+        self.assertEqual(session.call["params"]["serviceKey"], "secret-key")
         self.assertEqual(session.call["params"]["base_time"], "0500")
         self.assertNotIn("secret-key", repr(rows))
+
+    def test_provider_is_detected_without_exposing_or_double_encoding_key(self):
+        self.assertEqual(resolve_provider("abc%2Bdef"), "data_go")
+        self.assertEqual(resolve_provider("short-api-hub-key"), "api_hub")
+        with self.assertRaises(KmaConfigurationError):
+            resolve_provider("key", "unknown")
 
     def test_precipitation_categories_are_numeric(self):
         self.assertEqual(precipitation_mm_estimate("강수없음"), 0.0)

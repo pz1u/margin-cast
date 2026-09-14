@@ -1,6 +1,6 @@
 # 기상청 단기예보 연동
 
-`src.weather_forecast`는 기상청 API허브의 동네예보 단기예보 JSON 응답을
+`src.weather_forecast`는 공공데이터포털 또는 기상청 API허브의 동네예보 단기예보 JSON 응답을
 MarginCast 시뮬레이션에서 사용할 시간별 문맥으로 변환한다.
 
 ## 인증키 설정
@@ -14,10 +14,13 @@ Copy-Item .env.example .env
 `.env`의 값만 채운다. 이 파일은 Git에서 제외된다.
 
 ```dotenv
-KMA_SERVICE_KEY=발급받은_기상청_API허브_인증키
+KMA_SERVICE_KEY=발급받은_공공데이터포털_또는_API허브_인증키
+KMA_API_PROVIDER=auto
 ```
 
 운영체제 환경변수 `KMA_SERVICE_KEY`도 사용할 수 있으며, `.env`보다 우선한다.
+`auto`는 `%` 인코딩된 긴 공공데이터포털 키와 API허브 키를 구분한다. 필요하면
+`data_go` 또는 `api_hub`를 명시할 수 있다.
 
 ## 실행
 
@@ -41,6 +44,7 @@ KMA_SERVICE_KEY=발급받은_기상청_API허브_인증키
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.simulate_strategy `
+  --horizon-days 4 `
   --weather-forecast data\processed\weather_forecast.json
 ```
 

@@ -6,17 +6,24 @@ import os
 import re
 from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
+from urllib.parse import unquote
 
 import requests
 
 
 KST = timezone(timedelta(hours=9))
 BASE_TIMES = (2, 5, 8, 11, 14, 17, 20, 23)
-API_URL = (
+API_HUB_URL = (
     "https://apihub.kma.go.kr/api/typ02/openApi/"
     "VilageFcstInfoService_2.0/getVilageFcst"
 )
+DATA_GO_URL = (
+    "https://apis.data.go.kr/1360000/"
+    "VilageFcstInfoService_2.0/getVilageFcst"
+)
+API_URL = DATA_GO_URL
 SERVICE_KEY_NAME = "KMA_SERVICE_KEY"
+PROVIDER_NAME = "KMA_API_PROVIDER"
 SIMULATION_CATEGORIES = {"TMP", "PCP", "PTY", "REH", "POP", "SKY"}
 
 
@@ -65,6 +72,23 @@ def get_service_key(service_key=None, env_path=None):
     raise KmaConfigurationError(
         f"{SERVICE_KEY_NAME}가 없습니다. 프로젝트 .env 또는 운영체제 환경변수에 입력하세요."
     )
+
+
+def resolve_provider(service_key, provider=None, env_path=None):
+    """명시 설정을 우선하고 인코딩된 공공데이터포털 키는 자동 판별한다."""
+    if provider is None:
+        provider = os.environ.get(PROVIDER_NAME)
+    if provider is None:
+        env_path = env_path or Path(__file__).resolve().parents[1] / ".env"
+        provider = _read_env_value(env_path, PROVIDER_NAME)
+    provider = (provider or "auto").strip().lower()
+    if provider not in {"auto", "data_go", "api_hub"}:
+        raise KmaConfigurationError(
+            f"{PROVIDER_NAME}는 auto, data_go, api_hub 중 하나여야 합니다."
+        )
+    if provider == "auto":
+        provider = "data_go" if "%" in service_key or len(service_key) > 64 else "api_hub"
+    return provider
 
 
 def latest_available_base(now=None, publication_delay_minutes=15):
@@ -190,6 +214,7 @@ def fetch_village_forecast(
     base_datetime=None,
     timeout=15,
     session=None,
+    provider=None,
 ):
     """기상청 단기예보를 호출하고 정규화된 시간별 예보를 반환한다."""
     nx, ny = int(nx), int(ny)
@@ -200,6 +225,8 @@ def fetch_village_forecast(
     if base_datetime.tzinfo is None:
         base_datetime = base_datetime.replace(tzinfo=KST)
     base_datetime = base_datetime.astimezone(KST)
+    service_key = get_service_key(service_key, env_path)
+    provider = resolve_provider(service_key, provider, env_path)
     params = {
         "pageNo": 1,
         "numOfRows": 1000,
@@ -208,11 +235,17 @@ def fetch_village_forecast(
         "base_time": base_datetime.strftime("%H%M"),
         "nx": nx,
         "ny": ny,
-        "authKey": get_service_key(service_key, env_path),
     }
+    if provider == "data_go":
+        url = DATA_GO_URL
+        # requests가 쿼리를 한 번 인코딩하므로 포털의 인코딩 키는 먼저 복원한다.
+        params["serviceKey"] = unquote(service_key)
+    else:
+        url = API_HUB_URL
+        params["authKey"] = service_key
     client = session or requests
     try:
-        response = client.get(API_URL, params=params, timeout=timeout)
+        response = client.get(url, params=params, timeout=timeout)
         response.raise_for_status()
         payload = response.json()
     except requests.RequestException:
@@ -234,9 +267,12 @@ def main():
         default=root / "data" / "processed" / "weather_forecast.json",
     )
     parser.add_argument("--env-file", type=Path, default=root / ".env")
+    parser.add_argument("--provider", choices=["auto", "data_go", "api_hub"], default="auto")
     args = parser.parse_args()
 
-    forecasts = fetch_village_forecast(args.nx, args.ny, env_path=args.env_file)
+    forecasts = fetch_village_forecast(
+        args.nx, args.ny, env_path=args.env_file, provider=args.provider
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(forecasts, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

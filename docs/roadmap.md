@@ -6,7 +6,7 @@
 - Phase 2 Synthetic Dataset v2: 완료
 - Phase 3 EDA 재실행 및 Feature Dataset 갱신: 완료
 - Phase 4 Baseline·가격탄력성·할인 효과: 완료
-- Phase 5 기상청 API: 단기예보 변환·Simulation 연결 완료, 7일 결합과 실호출 검증 대기
+- Phase 5 기상청 API: 공공데이터포털 실호출·Simulation 연결 완료, 동일 해상도 7일 결합 대기
 - Phase 6 Price Simulation: 완료
 - Phase 7 Monte Carlo·Confidence: 완료
 - Phase 8 할인·세트 Simulation: 완료
