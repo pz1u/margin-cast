@@ -15,10 +15,12 @@ plt.rcParams["font.family"] = "Malgun Gothic"
 plt.rcParams["axes.unicode_minus"] = False
 
 try:
+    from .confidence_score import calculate_confidence
     from .estimate_elasticity import estimate_price_elasticity
     from .generate_data import PAYMENT_RATE, PLATFORM_RATE
     from .train_demand_model import CATEGORICAL_FEATURES, NUMERIC_FEATURES, add_model_features, build_model
 except ImportError:
+    from confidence_score import calculate_confidence
     from estimate_elasticity import estimate_price_elasticity
     from generate_data import PAYMENT_RATE, PLATFORM_RATE
     from train_demand_model import CATEGORICAL_FEATURES, NUMERIC_FEATURES, add_model_features, build_model
@@ -128,7 +130,9 @@ def summarize_distribution(values):
     return {
         "mean": float(np.mean(values)),
         "p05": float(np.quantile(values, 0.05)),
+        "p10": float(np.quantile(values, 0.10)),
         "p50": float(np.quantile(values, 0.50)),
+        "p90": float(np.quantile(values, 0.90)),
         "p95": float(np.quantile(values, 0.95)),
     }
 
@@ -140,6 +144,8 @@ def simulate_scenarios(
     baseline_price,
     simulations=10_000,
     seed=42,
+    demand_log_sigma=0.08,
+    cost_relative_std=0.05,
 ):
     validate_scenarios(scenarios)
     if simulations < 100:
@@ -150,15 +156,33 @@ def simulate_scenarios(
     channels = reference["channel"].to_numpy()
     fee_rates = np.array([PLATFORM_RATE[value] + PAYMENT_RATE[value] for value in channels])
 
-    baseline_counts = rng.poisson(base_mean, size=(simulations, len(base_mean)))
-    baseline_margin = baseline_price - costs - baseline_price * fee_rates
-    baseline_profit = baseline_counts @ baseline_margin
+    if demand_log_sigma < 0 or cost_relative_std < 0:
+        raise ValueError("수요와 원가 불확실성은 0 이상이어야 합니다.")
+    demand_factor = rng.lognormal(
+        mean=-(demand_log_sigma**2) / 2,
+        sigma=demand_log_sigma,
+        size=simulations,
+    )
+    cost_factor = rng.lognormal(
+        mean=-(cost_relative_std**2) / 2,
+        sigma=cost_relative_std,
+        size=simulations,
+    )
+    baseline_counts = rng.poisson(demand_factor[:, None] * base_mean[None, :])
+    baseline_margin = (
+        baseline_price
+        - costs[None, :] * cost_factor[:, None]
+        - baseline_price * fee_rates[None, :]
+    )
+    baseline_profit = np.sum(baseline_counts * baseline_margin, axis=1)
     baseline_units = baseline_counts.sum(axis=1)
 
     elasticity = float(elasticity_report["elasticity"])
     elasticity_error = float(elasticity_report["robust_standard_error"])
     promo_effect = float(elasticity_report["promotion_log_effect"])
     promo_error = float(elasticity_report["promotion_robust_standard_error"])
+    sampled_elasticity = rng.normal(elasticity, elasticity_error, simulations)
+    sampled_promo_effect = rng.normal(promo_effect, promo_error, simulations)
     results = []
     for index, scenario in enumerate(scenarios):
         paid_price = scenario["list_price"] - scenario["discount"]
@@ -168,16 +192,23 @@ def simulate_scenarios(
             profit = baseline_profit
             multiplier_samples = np.ones(simulations)
         else:
-            sampled_elasticity = rng.normal(elasticity, elasticity_error, simulations)
             log_multiplier = sampled_elasticity * np.log(paid_price / baseline_price)
             if scenario["discount"] > 0:
-                log_multiplier += rng.normal(promo_effect, promo_error, simulations)
+                log_multiplier += sampled_promo_effect
             multiplier_samples = np.exp(np.clip(log_multiplier, -5, 5))
-            scenario_mean = multiplier_samples[:, None] * base_mean[None, :]
+            scenario_mean = (
+                multiplier_samples[:, None]
+                * demand_factor[:, None]
+                * base_mean[None, :]
+            )
             counts = rng.poisson(scenario_mean)
-            unit_margin = paid_price - costs - paid_price * fee_rates
+            unit_margin = (
+                paid_price
+                - costs[None, :] * cost_factor[:, None]
+                - paid_price * fee_rates[None, :]
+            )
             units = counts.sum(axis=1)
-            profit = counts @ unit_margin
+            profit = np.sum(counts * unit_margin, axis=1)
         delta = profit - baseline_profit
         results.append(
             {
@@ -205,6 +236,8 @@ def run_simulation(
     simulations=10_000,
     seed=42,
     weather_forecast_path=None,
+    demand_log_sigma=0.08,
+    cost_relative_std=0.05,
 ):
     panel = pd.read_csv(panel_path, encoding="utf-8-sig")
     elasticity_report = estimate_price_elasticity(panel, menu_id=menu_id)
@@ -222,7 +255,16 @@ def run_simulation(
         baseline_price,
         simulations=simulations,
         seed=seed,
+        demand_log_sigma=demand_log_sigma,
+        cost_relative_std=cost_relative_std,
     )
+    for scenario, result in zip(scenarios, results):
+        if result["is_reference"]:
+            result["confidence"] = None
+        else:
+            result["confidence"] = calculate_confidence(
+                panel, elasticity_report, scenario, context_source
+            )
     report = {
         "menu_id": menu_id,
         "horizon_days": horizon_days,
@@ -235,6 +277,14 @@ def run_simulation(
         "baseline_price": baseline_price,
         "simulations": simulations,
         "seed": seed,
+        "uncertainty": {
+            "demand_log_sigma": demand_log_sigma,
+            "cost_relative_std": cost_relative_std,
+            "elasticity_standard_error": elasticity_report["robust_standard_error"],
+            "promotion_standard_error": elasticity_report[
+                "promotion_robust_standard_error"
+            ],
+        },
         "elasticity": elasticity_report["elasticity"],
         "elasticity_standard_error": elasticity_report["robust_standard_error"],
         "ground_truth_used": False,
@@ -247,6 +297,7 @@ def run_simulation(
             ),
             "1,000원 할인은 관측 실험과 같은 프로모션 노출 효과가 재현된다고 가정한다.",
             "세트 구성은 신규 수요와 잠식 효과를 관측 데이터만으로 분리할 수 없어 이 비교에 포함하지 않았다.",
+            "수요 공통 변동과 원가 변동 폭은 실제 예측 오차로 보정되기 전까지 명시적 가정값이다.",
         ],
     }
     output_dir = Path(output_dir)
@@ -297,7 +348,8 @@ def render_report(report):
         rows.append(
             f"| {scenario['name']} | {scenario['paid_price']:,}원 | "
             f"{scenario['units']['mean']:.1f} | {scenario['contribution_profit']['mean']:,.0f}원 | "
-            f"{scenario['profit_delta']['mean']:+,.0f}원 | {success} |"
+            f"{scenario['profit_delta']['mean']:+,.0f}원 | {success} | "
+            f"{scenario['confidence']['label'] if scenario['confidence'] else '기준'} |"
         )
     limitations = "\n".join(f"- {item}" for item in report["limitations"])
     return f"""# 가격·할인 Monte Carlo 시뮬레이션
@@ -310,12 +362,13 @@ def render_report(report):
 
 ![전략별 기여이익 분포](strategy-comparison.png)
 
-| 전략 | 실결제가 | 기대 판매량 | 기대 기여이익 | 현재 대비 | 성공확률 |
-|---|---:|---:|---:|---:|---:|
+| 전략 | 실결제가 | 기대 판매량 | 기대 기여이익 | 현재 대비 | 성공확률 | 신뢰도 |
+|---|---:|---:|---:|---:|---:|---:|
 {chr(10).join(rows)}
 
 성공확률은 같은 14일 문맥에서 시나리오 기여이익이 현재 가격의 모의 결과보다 클 확률이다.
-각 전략의 상세 5·50·95 백분위는 `simulation.json`에 저장된다.
+각 전략의 상세 5·10·50·90·95 백분위는 `simulation.json`에 저장된다. 10~90 백분위가
+기본 80% 예상 범위다. 신뢰도는 근거 품질 점수이며 성공확률과 다른 값이다.
 
 ## 해석 한계
 
@@ -331,6 +384,8 @@ def main():
     parser.add_argument("--simulations", type=int, default=10_000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--weather-forecast", type=Path)
+    parser.add_argument("--demand-log-sigma", type=float, default=0.08)
+    parser.add_argument("--cost-relative-std", type=float, default=0.05)
     args = parser.parse_args()
     report = run_simulation(
         args.panel,
@@ -338,6 +393,8 @@ def main():
         simulations=args.simulations,
         seed=args.seed,
         weather_forecast_path=args.weather_forecast,
+        demand_log_sigma=args.demand_log_sigma,
+        cost_relative_std=args.cost_relative_std,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
 

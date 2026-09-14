@@ -43,6 +43,8 @@ class DecisionServiceTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertEqual(len(result["strategies"]), 2)
         self.assertTrue(result["strategies"][0]["is_reference"])
+        self.assertIsNone(result["strategies"][0]["confidence"])
+        self.assertFalse(result["strategies"][1]["confidence"]["is_probability"])
         self.assertEqual(result["highest_expected_profit"]["name"], "가격 인상")
         self.assertIn("downside_risk", result["strategies"][1])
 

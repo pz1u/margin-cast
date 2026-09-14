@@ -5,9 +5,11 @@ from pathlib import Path
 import pandas as pd
 
 try:
+    from .confidence_score import calculate_confidence
     from .estimate_elasticity import estimate_price_elasticity
     from .simulate_strategy import build_reference_forecast, simulate_scenarios
 except ImportError:
+    from confidence_score import calculate_confidence
     from estimate_elasticity import estimate_price_elasticity
     from simulate_strategy import build_reference_forecast, simulate_scenarios
 
@@ -219,6 +221,17 @@ class MarginCastDecisionService:
             simulations=simulations,
             seed=seed,
         )
+        for scenario, result in zip(normalized, results):
+            result["confidence"] = (
+                None
+                if result["is_reference"]
+                else calculate_confidence(
+                    panel,
+                    self._elasticity_cache[menu_id],
+                    scenario,
+                    "observed_history",
+                )
+            )
         candidates = [row for row in results if not row["is_reference"]]
         recommended = max(candidates, key=lambda row: row["contribution_profit"]["mean"])
         for row in results:
@@ -242,10 +255,12 @@ class MarginCastDecisionService:
                 "expected_contribution_profit": recommended["contribution_profit"]["mean"],
                 "success_probability": recommended["success_probability"],
                 "downside_risk": recommended["downside_risk"],
+                "confidence": recommended["confidence"],
             },
             "interpretation_notes": [
                 "highest_expected_profit은 기대값 기준 정렬이며 최종 실행 결정은 아니다.",
                 "downside_risk는 현재 대비 기여이익 차이의 5백분위가 0보다 작은 경우 true다.",
                 "미래 날씨 예보가 없으므로 최근 관측 문맥을 재사용했다.",
+                "confidence는 근거 품질 점수이며 success_probability와 별개다.",
             ],
         }

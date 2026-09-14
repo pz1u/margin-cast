@@ -57,6 +57,11 @@ class StrategySimulationTests(unittest.TestCase):
                 scenario["contribution_profit"]["p05"],
                 scenario["contribution_profit"]["p95"],
             )
+            self.assertLessEqual(
+                scenario["contribution_profit"]["p10"],
+                scenario["contribution_profit"]["p90"],
+            )
+            self.assertFalse(scenario["confidence"]["is_probability"])
 
     def test_invalid_scenario_is_rejected(self):
         with self.assertRaises(ValueError):

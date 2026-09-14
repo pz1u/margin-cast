@@ -122,6 +122,8 @@ Copy-Item .env.example .env
 ## 가격·할인 시뮬레이션
 
 기준 수요 모델과 탄력성 추정치를 연결해 14일 전략별 판매량·기여이익 분포를 계산합니다.
+수요·탄력성·할인효과·원가 불확실성을 반영하고 80% 예상 범위, 개선확률, 근거 품질
+신뢰도(`HIGH`/`MEDIUM`/`LOW`)를 서로 분리해 반환합니다.
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.simulate_strategy
