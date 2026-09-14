@@ -150,6 +150,8 @@ AI 에이전트가 계산 결과를 직접 생성하지 않고 검증된 엔진�
 .\.venv\Scripts\python.exe -m src.agent_tool_contracts get_margincast_capabilities
 .\.venv\Scripts\python.exe -m src.agent_tool_contracts compare_price_strategies `
   --arguments-file examples\compare-price-strategies.json
+.\.venv\Scripts\python.exe -m src.agent_tool_contracts simulate_bundle_strategy `
+  --arguments-file examples\simulate-bundle-strategy.json
 ```
 
 연동 규칙과 남은 작업은 [에이전트 도구 연동 계약](docs/agent-tool-contract.md)을 참고하세요.

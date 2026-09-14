@@ -6,15 +6,21 @@ import pandas as pd
 
 try:
     from .confidence_score import calculate_confidence
+    from .decision_policy import rank_strategies
     from .estimate_elasticity import estimate_price_elasticity
+    from .prepare_analysis_data import load_observed_tables
+    from .simulate_bundle import build_bundle_evidence, simulate_bundle
     from .simulate_strategy import build_reference_forecast, simulate_scenarios
 except ImportError:
     from confidence_score import calculate_confidence
+    from decision_policy import rank_strategies
     from estimate_elasticity import estimate_price_elasticity
+    from prepare_analysis_data import load_observed_tables
+    from simulate_bundle import build_bundle_evidence, simulate_bundle
     from simulate_strategy import build_reference_forecast, simulate_scenarios
 
 
-SERVICE_VERSION = "0.1.0"
+SERVICE_VERSION = "0.2.0"
 MIN_SIMULATIONS = 100
 MAX_SIMULATIONS = 50_000
 MAX_SCENARIOS = 8
@@ -29,9 +35,10 @@ class DecisionServiceError(ValueError):
 
 
 class MarginCastDecisionService:
-    def __init__(self, panel_path=None):
+    def __init__(self, panel_path=None, data_dir=None):
         root = Path(__file__).resolve().parents[1]
         self.panel_path = Path(panel_path or root / "data" / "processed" / "demand_panel.csv")
+        self.data_dir = Path(data_dir or self.panel_path.parents[1])
         self._panel = None
         self._elasticity_cache = {}
         self._reference_cache = {}
@@ -98,7 +105,11 @@ class MarginCastDecisionService:
                 "ground_truth_used": False,
             },
             "supported_menus": supported,
-            "operations": ["get_capabilities", "compare_price_strategies"],
+            "operations": [
+                "get_capabilities",
+                "compare_price_strategies",
+                "simulate_bundle_strategy",
+            ],
             "limits": {
                 "horizon_days": {"minimum": 1, "maximum": int(panel["day_index"].nunique())},
                 "simulations": {"minimum": MIN_SIMULATIONS, "maximum": MAX_SIMULATIONS},
@@ -107,7 +118,7 @@ class MarginCastDecisionService:
             "limitations": [
                 "가격탄력성은 학습 구간에 두 개 이상의 정가가 관측된 메뉴만 지원한다.",
                 "미래 날씨 입력 전까지 최근 관측 문맥을 재사용한다.",
-                "세트 전략은 신규 수요와 잠식 효과를 분리할 근거가 없어 지원하지 않는다.",
+                "세트 전략의 신규 수요와 잠식 효과는 사용자가 명시한 가정으로 계산한다.",
             ],
         }
 
@@ -232,10 +243,11 @@ class MarginCastDecisionService:
                     "observed_history",
                 )
             )
+        ranked = rank_strategies(results)
         candidates = [row for row in results if not row["is_reference"]]
         recommended = max(candidates, key=lambda row: row["contribution_profit"]["mean"])
         for row in results:
-            row["downside_risk"] = bool(row["profit_delta"]["p05"] < 0)
+            row["downside_risk"] = bool(row.get("decision", {}).get("downside_risk", False))
         return {
             "status": "ok",
             "request": {
@@ -257,10 +269,83 @@ class MarginCastDecisionService:
                 "downside_risk": recommended["downside_risk"],
                 "confidence": recommended["confidence"],
             },
+            "decision_ranking": [
+                {
+                    "rank": index,
+                    "name": row["name"],
+                    **row["decision"],
+                }
+                for index, row in enumerate(ranked, start=1)
+            ],
+            "recommended_action": {
+                "name": ranked[0]["name"],
+                "action": ranked[0]["decision"]["action"],
+                "reason": ranked[0]["decision"]["reason"],
+            },
             "interpretation_notes": [
                 "highest_expected_profit은 기대값 기준 정렬이며 최종 실행 결정은 아니다.",
-                "downside_risk는 현재 대비 기여이익 차이의 5백분위가 0보다 작은 경우 true다.",
+                "decision_ranking은 기대이익·개선확률·80% 하한·신뢰도를 함께 반영한다.",
+                "downside_risk는 현재 대비 기여이익 차이의 10백분위가 0보다 작은 경우 true다.",
                 "미래 날씨 예보가 없으므로 최근 관측 문맥을 재사용했다.",
                 "confidence는 근거 품질 점수이며 success_probability와 별개다.",
+            ],
+        }
+
+    def simulate_bundle_strategy(
+        self,
+        scenario,
+        horizon_days=14,
+        simulations=10_000,
+        seed=42,
+    ):
+        if isinstance(horizon_days, bool) or not isinstance(horizon_days, int) or horizon_days < 1:
+            raise DecisionServiceError("INVALID_HORIZON", "horizon_days는 1 이상의 정수여야 합니다.")
+        if (
+            isinstance(simulations, bool)
+            or not isinstance(simulations, int)
+            or not MIN_SIMULATIONS <= simulations <= MAX_SIMULATIONS
+        ):
+            raise DecisionServiceError(
+                "INVALID_SIMULATIONS",
+                f"simulations는 {MIN_SIMULATIONS:,}~{MAX_SIMULATIONS:,} 범위여야 합니다.",
+            )
+        if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= 2**32 - 1:
+            raise DecisionServiceError("INVALID_SEED", "seed는 0~2^32-1 범위의 정수여야 합니다.")
+        tables = load_observed_tables(self.data_dir)
+        evidence = build_bundle_evidence(tables)
+        panel = self._load_panel().copy()
+        panel["date"] = pd.to_datetime(panel["date"])
+        bundle_start = tables["bundles"]["start_date"].min()
+        clean = panel[panel["date"] < bundle_start]
+        recent_dates = sorted(clean["date"].unique())[-14:]
+        baseline_daily_profit = (
+            clean[clean["date"].isin(recent_dates)]
+            .groupby("date")["contribution_profit"]
+            .sum()
+            .to_numpy()
+        )
+        result = simulate_bundle(
+            evidence,
+            scenario,
+            horizon_days=horizon_days,
+            simulations=simulations,
+            seed=seed,
+            baseline_daily_profit=baseline_daily_profit,
+        )
+        result["is_reference"] = False
+        decision = rank_strategies([result])[0]["decision"]
+        return {
+            "status": "ok",
+            "request": {
+                "horizon_days": horizon_days,
+                "simulations": simulations,
+                "seed": seed,
+            },
+            "strategy": result,
+            "decision": decision,
+            "interpretation_notes": [
+                "세트 전환율·신규 수요율·잠식률은 사용자가 제공한 시나리오 가정이다.",
+                "근거 신뢰도가 LOW이면 기대이익과 개선확률이 높아도 EXPERIMENT로 제한한다.",
+                "계산과 의사결정에 ground_truth.json을 사용하지 않았다.",
             ],
         }

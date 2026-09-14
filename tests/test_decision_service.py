@@ -47,6 +47,8 @@ class DecisionServiceTests(unittest.TestCase):
         self.assertFalse(result["strategies"][1]["confidence"]["is_probability"])
         self.assertEqual(result["highest_expected_profit"]["name"], "가격 인상")
         self.assertIn("downside_risk", result["strategies"][1])
+        self.assertIn(result["recommended_action"]["action"], {"HOLD", "EXPERIMENT", "RECOMMEND"})
+        self.assertEqual(result["decision_ranking"][0]["rank"], 1)
 
     def test_same_request_is_reproducible(self):
         request = [{"name": "가격 인상", "list_price": 10000, "discount": 0}]
@@ -81,6 +83,24 @@ class DecisionServiceTests(unittest.TestCase):
                 simulations=500,
             )
         self.assertEqual(context.exception.code, "INVALID_SCENARIOS")
+
+    def test_low_confidence_bundle_is_limited_to_experiment(self):
+        result = self.service.simulate_bundle_strategy(
+            {
+                "name": "세트 실험",
+                "bundle_price": 10000,
+                "take_rate": 0.3,
+                "copurchase_take_rate": 0.55,
+                "incremental_demand_rate": 0.1,
+                "cannibalization_rate": 0.02,
+            },
+            simulations=500,
+            seed=7,
+        )
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["strategy"]["confidence"]["label"], "LOW")
+        self.assertEqual(result["decision"]["action"], "EXPERIMENT")
+        self.assertFalse(result["decision"]["is_probability"])
 
 
 if __name__ == "__main__":

@@ -27,7 +27,14 @@ class AgentToolContractTests(unittest.TestCase):
 
     def test_tool_schemas_are_strict_and_have_unique_names(self):
         names = [schema["name"] for schema in TOOL_SCHEMAS]
-        self.assertEqual(names, ["get_margincast_capabilities", "compare_price_strategies"])
+        self.assertEqual(
+            names,
+            [
+                "get_margincast_capabilities",
+                "compare_price_strategies",
+                "simulate_bundle_strategy",
+            ],
+        )
         self.assertEqual(len(names), len(set(names)))
         for schema in TOOL_SCHEMAS:
             self.assertTrue(schema["strict"])
@@ -67,6 +74,25 @@ class AgentToolContractTests(unittest.TestCase):
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["error"]["code"], "UNSUPPORTED_MENU")
         self.assertFalse(result["error"]["retryable"])
+
+    def test_bundle_dispatch_returns_experiment_decision(self):
+        arguments = {
+            "scenario": {
+                "name": "치킨마요 콜라 세트",
+                "bundle_price": 10000,
+                "take_rate": 0.3,
+                "copurchase_take_rate": 0.55,
+                "incremental_demand_rate": 0.1,
+                "cannibalization_rate": 0.02,
+            },
+            "horizon_days": 14,
+            "simulations": 500,
+            "seed": 42,
+        }
+        result = execute_tool("simulate_bundle_strategy", arguments, self.service)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["decision"]["action"], "EXPERIMENT")
+        self.assertFalse(result["strategy"]["ground_truth_used"])
 
     def test_invalid_json_and_unknown_tool_are_stable_errors(self):
         invalid = execute_tool("compare_price_strategies", "{", self.service)

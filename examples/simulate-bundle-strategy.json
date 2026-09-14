@@ -1,0 +1,13 @@
+{
+  "scenario": {
+    "name": "치킨마요 콜라 세트",
+    "bundle_price": 10000,
+    "take_rate": 0.3,
+    "copurchase_take_rate": 0.55,
+    "incremental_demand_rate": 0.1,
+    "cannibalization_rate": 0.02
+  },
+  "horizon_days": 14,
+  "simulations": 10000,
+  "seed": 42
+}

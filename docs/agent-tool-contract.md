@@ -15,15 +15,29 @@
 
 가격·할인 대안을 현재 가격과 비교한다. 핵심 출력은 다음과 같다.
 
-- 전략별 기대 판매량과 5·50·95 백분위
-- 전략별 기대 기여이익과 5·50·95 백분위
+- 전략별 기대 판매량과 5·10·50·90·95 백분위
+- 전략별 기대 기여이익과 5·10·50·90·95 백분위
 - 현재 가격 대비 기대 기여이익 차이
 - 현재 가격보다 기여이익이 높을 확률
-- 5백분위 손실 여부인 `downside_risk`
+- 10백분위 손실 여부인 `downside_risk`
+- 성공확률과 분리된 근거 품질 `confidence`
+- `RECOMMEND`·`EXPERIMENT`·`HOLD` 실행 판단
 - 기대 기여이익이 가장 높은 대안
 
-`highest_expected_profit`은 계산 결과의 정렬값이다. 에이전트는 이를 확정적인 실행 명령으로
-표현하지 않고 성공확률, 하방 위험, 데이터 한계와 함께 설명해야 한다.
+`highest_expected_profit`은 기대값만 본 별도 지표다. 최종 순서는 기대이익·개선확률·80%
+하한·신뢰도를 함께 반영한 `decision_ranking`을 사용한다.
+
+### `simulate_bundle_strategy`
+
+치킨마요·콜라 세트 가격과 다음 네 비율을 명시적으로 받아 계산한다.
+
+- 콜라가 없던 치킨마요 주문의 `take_rate`
+- 기존 치킨마요+콜라 주문의 `copurchase_take_rate`
+- 기존 치킨마요 수요 대비 `incremental_demand_rate`
+- 다른 주메뉴의 `cannibalization_rate`
+
+이 비율은 POS에서 직접 식별할 수 없으므로 에이전트가 확정값처럼 만들면 안 된다. 사용자 가정
+또는 실제 실험으로 얻은 값을 넣고, 근거가 가정뿐이면 Decision Engine은 `EXPERIMENT`로 제한한다.
 
 ## 도구 등록에 사용할 코드
 
@@ -43,6 +57,8 @@
 .\.venv\Scripts\python.exe -m src.agent_tool_contracts get_margincast_capabilities
 .\.venv\Scripts\python.exe -m src.agent_tool_contracts compare_price_strategies `
   --arguments-file examples\compare-price-strategies.json
+.\.venv\Scripts\python.exe -m src.agent_tool_contracts simulate_bundle_strategy `
+  --arguments-file examples\simulate-bundle-strategy.json
 ```
 
 같은 입력과 seed는 같은 결과를 반환한다. 잘못된 입력은 프로세스 예외 대신 다음 형식의
@@ -66,10 +82,10 @@
 
 1. 계산값을 LLM이 다시 만들거나 임의로 수정하지 않는다.
 2. `ground_truth_used`가 `false`인지 확인한다.
-3. 기대값과 함께 범위·성공확률·하방 위험을 보여준다.
+3. 기대값과 함께 범위·성공확률·하방 위험·신뢰도·실행 판단을 보여준다.
 4. 미래 날씨 예보가 없다는 가정을 알린다.
 5. 지원되지 않는 메뉴에는 가격탄력성을 추측하지 않는다.
-6. 세트 전략은 신규 수요와 잠식을 분리할 데이터가 생길 때까지 계산하지 않는다.
+6. 세트 전략의 신규 수요와 잠식은 사용자 가정임을 분명히 표시한다.
 
 ## 사용자에게 남은 구현
 

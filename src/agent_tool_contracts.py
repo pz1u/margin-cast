@@ -31,7 +31,7 @@ TOOL_SCHEMAS = [
         "name": "compare_price_strategies",
         "description": (
             "한 메뉴의 가격 또는 할인 대안을 현재 가격과 Monte Carlo로 비교한다. "
-            "기대 판매량, 기대 기여이익, 5·50·95 백분위, 성공확률과 하방 위험을 반환한다."
+            "기대 판매량, 기대 기여이익, 80% 범위, 성공확률, 신뢰도와 실행 판단을 반환한다."
         ),
         "strict": True,
         "parameters": {
@@ -89,6 +89,45 @@ TOOL_SCHEMAS = [
             "additionalProperties": False,
         },
     },
+    {
+        "type": "function",
+        "name": "simulate_bundle_strategy",
+        "description": (
+            "치킨마요·콜라 세트의 Take Rate, 기존 동시구매 전환율, 신규 수요율과 "
+            "다른 주메뉴 잠식률을 명시적으로 입력해 기여이익 분포와 실행 판단을 계산한다."
+        ),
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "scenario": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "minLength": 1, "maxLength": 50},
+                        "bundle_price": {"type": "integer", "minimum": 1000, "maximum": 100000},
+                        "take_rate": {"type": "number", "minimum": 0, "maximum": 1},
+                        "copurchase_take_rate": {"type": "number", "minimum": 0, "maximum": 1},
+                        "incremental_demand_rate": {"type": "number", "minimum": 0, "maximum": 1},
+                        "cannibalization_rate": {"type": "number", "minimum": 0, "maximum": 1},
+                    },
+                    "required": [
+                        "name",
+                        "bundle_price",
+                        "take_rate",
+                        "copurchase_take_rate",
+                        "incremental_demand_rate",
+                        "cannibalization_rate",
+                    ],
+                    "additionalProperties": False,
+                },
+                "horizon_days": {"type": "integer", "minimum": 1, "maximum": 180},
+                "simulations": {"type": "integer", "minimum": 100, "maximum": 50000},
+                "seed": {"type": "integer", "minimum": 0, "maximum": 4294967295},
+            },
+            "required": ["scenario", "horizon_days", "simulations", "seed"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -140,6 +179,19 @@ def execute_tool(tool_name, arguments, service=None):
                     "INVALID_ARGUMENTS", "필수 인자가 없습니다.", {"missing_fields": missing}
                 )
             return service.compare_price_strategies(**arguments)
+        if tool_name == "simulate_bundle_strategy":
+            allowed = {"scenario", "horizon_days", "simulations", "seed"}
+            unknown = sorted(set(arguments) - allowed)
+            if unknown:
+                return error_result(
+                    "INVALID_ARGUMENTS", "지원하지 않는 인자가 있습니다.", {"unknown_fields": unknown}
+                )
+            missing = sorted(allowed - set(arguments))
+            if missing:
+                return error_result(
+                    "INVALID_ARGUMENTS", "필수 인자가 없습니다.", {"missing_fields": missing}
+                )
+            return service.simulate_bundle_strategy(**arguments)
         return error_result(
             "UNKNOWN_TOOL",
             f"등록되지 않은 도구입니다: {tool_name}",
@@ -161,11 +213,12 @@ def main():
     parser.add_argument("tool_name", choices=[schema["name"] for schema in TOOL_SCHEMAS])
     parser.add_argument("--arguments-file", type=Path)
     parser.add_argument("--panel", type=Path)
+    parser.add_argument("--data-dir", type=Path)
     args = parser.parse_args()
     arguments = {}
     if args.arguments_file:
         arguments = json.loads(args.arguments_file.read_text(encoding="utf-8"))
-    service = MarginCastDecisionService(args.panel)
+    service = MarginCastDecisionService(args.panel, args.data_dir)
     print(json.dumps(execute_tool(args.tool_name, arguments, service), ensure_ascii=False, indent=2))
 
 
