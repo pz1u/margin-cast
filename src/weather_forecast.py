@@ -10,7 +10,13 @@ from urllib.parse import unquote
 
 import requests
 
-from src.location_grid import KmaGridError, resolve_grid_coordinates
+from src.env_config import read_env_value
+from src.kakao_geocoding import (
+    KakaoConfigurationError,
+    KakaoGeocodingError,
+    geocode_address,
+)
+from src.location_grid import KmaGridError, latlon_to_grid, resolve_grid_coordinates
 
 
 KST = timezone(timedelta(hours=9))
@@ -37,25 +43,6 @@ class KmaApiError(RuntimeError):
     """기상청 API가 정상 예보를 반환하지 않은 경우."""
 
 
-def _read_env_value(path, name):
-    """추가 의존성 없이 프로젝트의 단순한 .env 값을 읽는다."""
-    path = Path(path)
-    if not path.is_file():
-        return None
-    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if key.strip() != name:
-            continue
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-            value = value[1:-1]
-        return value or None
-    return None
-
-
 def get_service_key(service_key=None, env_path=None):
     """명시 인자, 운영체제 환경변수, 프로젝트 .env 순서로 키를 찾는다."""
     if service_key and service_key.strip():
@@ -67,7 +54,7 @@ def get_service_key(service_key=None, env_path=None):
 
     if env_path is None:
         env_path = Path(__file__).resolve().parents[1] / ".env"
-    file_value = _read_env_value(env_path, SERVICE_KEY_NAME)
+    file_value = read_env_value(env_path, SERVICE_KEY_NAME)
     if file_value:
         return file_value
 
@@ -82,7 +69,7 @@ def resolve_provider(service_key, provider=None, env_path=None):
         provider = os.environ.get(PROVIDER_NAME)
     if provider is None:
         env_path = env_path or Path(__file__).resolve().parents[1] / ".env"
-        provider = _read_env_value(env_path, PROVIDER_NAME)
+        provider = read_env_value(env_path, PROVIDER_NAME)
     provider = (provider or "auto").strip().lower()
     if provider not in {"auto", "data_go", "api_hub"}:
         raise KmaConfigurationError(
@@ -258,6 +245,37 @@ def fetch_village_forecast(
     return parse_forecast_response(payload)
 
 
+def resolve_forecast_location(
+    *,
+    address=None,
+    nx=None,
+    ny=None,
+    latitude=None,
+    longitude=None,
+    env_path=None,
+    geocoder=geocode_address,
+):
+    """주소, 위경도 또는 격자를 하나의 기상청 격자 입력으로 정규화한다."""
+    if address:
+        if any(value is not None for value in (nx, ny, latitude, longitude)):
+            raise KmaConfigurationError(
+                "주소와 nx·ny 또는 위도·경도를 함께 입력할 수 없습니다."
+            )
+        location = geocoder(address, env_path=env_path)
+        resolved_nx, resolved_ny = latlon_to_grid(
+            location["latitude"], location["longitude"]
+        )
+        return resolved_nx, resolved_ny, location
+
+    resolved_nx, resolved_ny = resolve_grid_coordinates(
+        nx=nx,
+        ny=ny,
+        latitude=latitude,
+        longitude=longitude,
+    )
+    return resolved_nx, resolved_ny, None
+
+
 def main():
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
@@ -265,6 +283,7 @@ def main():
     parser.add_argument("--ny", type=int, help="동네예보 격자 Y 좌표")
     parser.add_argument("--latitude", type=float, help="매장 위도(WGS84)")
     parser.add_argument("--longitude", type=float, help="매장 경도(WGS84)")
+    parser.add_argument("--address", help="카카오 로컬 API로 검색할 매장 도로명 또는 지번 주소")
     parser.add_argument(
         "--output",
         type=Path,
@@ -275,13 +294,15 @@ def main():
     args = parser.parse_args()
 
     try:
-        nx, ny = resolve_grid_coordinates(
+        nx, ny, location = resolve_forecast_location(
+            address=args.address,
             nx=args.nx,
             ny=args.ny,
             latitude=args.latitude,
             longitude=args.longitude,
+            env_path=args.env_file,
         )
-    except KmaGridError as error:
+    except (KmaGridError, KakaoConfigurationError, KakaoGeocodingError) as error:
         parser.error(str(error))
 
     forecasts = fetch_village_forecast(
@@ -293,7 +314,13 @@ def main():
     )
     print(
         json.dumps(
-            {"rows": len(forecasts), "nx": nx, "ny": ny, "output": str(args.output)},
+            {
+                "rows": len(forecasts),
+                "nx": nx,
+                "ny": ny,
+                "location_source": "kakao_address" if location else "coordinates",
+                "output": str(args.output),
+            },
             ensure_ascii=False,
         )
     )

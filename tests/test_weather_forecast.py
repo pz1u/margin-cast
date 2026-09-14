@@ -15,6 +15,7 @@ from src.weather_forecast import (
     latest_available_base,
     parse_forecast_response,
     precipitation_mm_estimate,
+    resolve_forecast_location,
     resolve_provider,
 )
 
@@ -112,6 +113,28 @@ class WeatherForecastTests(unittest.TestCase):
         self.assertEqual(resolve_provider("short-api-hub-key"), "api_hub")
         with self.assertRaises(KmaConfigurationError):
             resolve_provider("key", "unknown")
+
+    def test_address_is_converted_to_forecast_grid(self):
+        def fake_geocoder(address, env_path):
+            self.assertEqual(address, "서울 중구 세종대로 110")
+            self.assertEqual(env_path, Path("custom.env"))
+            return {
+                "address_name": address,
+                "latitude": 37.5665,
+                "longitude": 126.9780,
+            }
+
+        nx, ny, location = resolve_forecast_location(
+            address="서울 중구 세종대로 110",
+            env_path=Path("custom.env"),
+            geocoder=fake_geocoder,
+        )
+        self.assertEqual((nx, ny), (60, 127))
+        self.assertEqual(location["address_name"], "서울 중구 세종대로 110")
+
+    def test_address_cannot_be_combined_with_coordinates(self):
+        with self.assertRaises(KmaConfigurationError):
+            resolve_forecast_location(address="서울", nx=60, ny=127)
 
     def test_precipitation_categories_are_numeric(self):
         self.assertEqual(precipitation_mm_estimate("강수없음"), 0.0)

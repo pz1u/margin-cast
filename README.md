@@ -106,14 +106,14 @@ M01·M02의 가격 외 할인 노출 효과를 분리해 추정합니다.
 
 ## 기상청 단기예보
 
-기상청 인증키와 매장 위도·경도를 입력하면 TMP·PCP·PTY·REH·POP·SKY를
+기상청 인증키와 매장 주소를 입력하면 카카오 로컬 API로 위경도를 찾고,
+TMP·PCP·PTY·REH·POP·SKY를
 시뮬레이션용 시간별 문맥으로 변환합니다.
 
 ```powershell
 Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m src.weather_forecast `
-  --latitude 37.5665 `
-  --longitude 126.9780
+  --address "서울특별시 중구 세종대로 110"
 .\.venv\Scripts\python.exe -m src.simulate_strategy `
   --horizon-days 4 `
   --weather-forecast data\processed\weather_forecast.json
