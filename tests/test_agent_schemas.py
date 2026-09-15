@@ -1,7 +1,9 @@
 import unittest
 
 from src.agent_schemas import (
+    AgentError,
     AgentErrorCategory,
+    AgentErrorOrigin,
     AgentInput,
     AgentResponse,
     AgentResponseStatus,
@@ -12,6 +14,7 @@ from src.agent_schemas import (
     Message,
     MessageRole,
     MissingInput,
+    Provenance,
     StaticCapabilities,
     Strategy,
     ToolCall,
@@ -50,8 +53,9 @@ class AgentSchemaTests(unittest.TestCase):
             message_id="user-1",
             text="치킨마요를 9,500원으로 올리면 어때?",
             business_inputs={"list_price": 9500},
-            sources={"list_price": ValueSource.USER},
-            source_refs={"list_price": "user-1:list_price"},
+            provenance={
+                "list_price": Provenance(ValueSource.USER, "user-1:list_price")
+            },
         )
         self.assertEqual(value.business_inputs["list_price"], 9500)
 
@@ -60,8 +64,9 @@ class AgentSchemaTests(unittest.TestCase):
                 message_id="user-1",
                 text="가격을 추천해줘",
                 business_inputs={"list_price": 9500},
-                sources={"list_price": ValueSource.LLM},
-                source_refs={"list_price": "assistant-1:list_price"},
+                provenance={
+                    "list_price": Provenance(ValueSource.LLM, "assistant-1:list_price")
+                },
             )
 
     def test_confirmed_strategy_rejects_llm_business_input(self):
@@ -70,8 +75,9 @@ class AgentSchemaTests(unittest.TestCase):
                 name="LLM 가격 후보",
                 operation="compare_price_strategies",
                 business_inputs={"list_price": 9500},
-                sources={"list_price": ValueSource.LLM},
-                source_refs={"list_price": "assistant-1:list_price"},
+                provenance={
+                    "list_price": Provenance(ValueSource.LLM, "assistant-1:list_price")
+                },
                 confirmed=True,
             )
 
@@ -99,29 +105,39 @@ class AgentSchemaTests(unittest.TestCase):
         )
         evidence = Evidence(
             items={"price_events": 3},
-            sources={"price_events": ValueSource.ENGINE},
-            source_refs={"price_events": "call-1:strategies[1].confidence.evidence.price_events"},
+            provenance={
+                "price_events": Provenance(
+                    ValueSource.ENGINE,
+                    "call-1:strategies[1].confidence.evidence.price_events",
+                )
+            },
         )
         response = AgentResponse(
             status=AgentResponseStatus.COMPLETED,
             facts={"expected_profit_delta": 135000},
-            fact_sources={"expected_profit_delta": ValueSource.ENGINE},
-            fact_source_refs={
-                "expected_profit_delta": "call-1:strategies[1].profit_delta.mean"
+            fact_provenance={
+                "expected_profit_delta": Provenance(
+                    ValueSource.ENGINE,
+                    "call-1:strategies[1].profit_delta.mean",
+                )
             },
-            decisions=(decision,),
+            decision=decision,
             evidence=evidence,
             explanation="이익 개선 가능성은 있지만 먼저 작은 실험이 필요합니다.",
         )
-        self.assertEqual(response.decisions[0].source, ValueSource.ENGINE)
-        self.assertEqual(response.fact_sources["expected_profit_delta"], ValueSource.ENGINE)
+        self.assertEqual(response.decision.source, ValueSource.ENGINE)
+        self.assertEqual(
+            response.fact_provenance["expected_profit_delta"].source,
+            ValueSource.ENGINE,
+        )
 
         with self.assertRaises(ValueError):
             AgentResponse(
                 status=AgentResponseStatus.COMPLETED,
                 facts={"expected_profit_delta": 135000},
-                fact_sources={"expected_profit_delta": ValueSource.LLM},
-                fact_source_refs={"expected_profit_delta": "assistant-1"},
+                fact_provenance={
+                    "expected_profit_delta": Provenance(ValueSource.LLM, "assistant-1")
+                },
             )
 
     def test_missing_input_response_requires_missing_input(self):
@@ -144,16 +160,39 @@ class AgentSchemaTests(unittest.TestCase):
             call_id="call-2",
             tool_name="compare_price_strategies",
             raw={"status": "error", "error": {"code": "UNSUPPORTED_MENU"}},
-            error_category=AgentErrorCategory.UNSUPPORTED,
+        )
+        agent_error = AgentError(
+            code=AgentErrorCategory.UNSUPPORTED,
+            message="지원하지 않는 메뉴입니다.",
+            origin=AgentErrorOrigin.TOOL,
         )
         with self.assertRaises(ValueError):
             AgentResponse(
                 status=AgentResponseStatus.ERROR,
                 facts={"expected_profit_delta": 135000},
-                fact_sources={"expected_profit_delta": ValueSource.ENGINE},
-                fact_source_refs={"expected_profit_delta": "call-2:profit_delta.mean"},
-                error=tool_result,
+                fact_provenance={
+                    "expected_profit_delta": Provenance(
+                        ValueSource.ENGINE,
+                        "call-2:profit_delta.mean",
+                    )
+                },
+                error=agent_error,
+                tool_results=(tool_result,),
             )
+
+    def test_agent_error_does_not_require_fake_tool_result(self):
+        response = AgentResponse(
+            status=AgentResponseStatus.ERROR,
+            error=AgentError(
+                code=AgentErrorCategory.ENGINE_ERROR,
+                message="Ollama에 연결할 수 없습니다.",
+                origin=AgentErrorOrigin.PROVIDER,
+                retryable=True,
+            ),
+        )
+
+        self.assertEqual(response.error.origin, AgentErrorOrigin.PROVIDER)
+        self.assertEqual(response.tool_results, ())
 
 
 if __name__ == "__main__":

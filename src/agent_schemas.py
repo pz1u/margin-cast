@@ -20,12 +20,34 @@ class ValueSource(str, Enum):
     LLM = "LLM"
 
 
+@dataclass(frozen=True)
+class Provenance:
+    """한 값의 출처와 원본 위치."""
+
+    source: ValueSource
+    ref: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.source, ValueSource):
+            raise TypeError("source는 ValueSource여야 합니다.")
+        if self.ref is not None:
+            _require_text(self.ref, "ref")
+
+
 class AgentErrorCategory(str, Enum):
     MISSING_INPUT = "MISSING_INPUT"
     INVALID_INPUT = "INVALID_INPUT"
     UNSUPPORTED = "UNSUPPORTED"
     INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
     ENGINE_ERROR = "ENGINE_ERROR"
+
+
+class AgentErrorOrigin(str, Enum):
+    INPUT = "input"
+    CAPABILITY = "capability"
+    TOOL = "tool"
+    PROVIDER = "provider"
+    RUNTIME = "runtime"
 
 
 class AgentResponseStatus(str, Enum):
@@ -58,29 +80,26 @@ def _copy_object(value: dict[str, Any]) -> JsonObject:
     return deepcopy(value)
 
 
-def _copy_sources(value: dict[str, ValueSource]) -> dict[str, ValueSource]:
+def _copy_provenance(value: dict[str, Provenance]) -> dict[str, Provenance]:
     if not isinstance(value, dict):
-        raise TypeError("값 출처는 dict여야 합니다.")
+        raise TypeError("provenance는 dict여야 합니다.")
     copied = dict(value)
-    if any(not isinstance(source, ValueSource) for source in copied.values()):
-        raise TypeError("값 출처는 ValueSource여야 합니다.")
+    if any(not isinstance(item, Provenance) for item in copied.values()):
+        raise TypeError("provenance 값은 Provenance여야 합니다.")
     return copied
 
 
 def _validate_value_provenance(
     values: JsonObject,
-    sources: dict[str, ValueSource],
-    source_refs: dict[str, str],
+    provenance: dict[str, Provenance],
     *,
     allowed_sources: set[ValueSource],
 ) -> None:
     value_keys = set(values)
-    if set(sources) != value_keys or set(source_refs) != value_keys:
-        raise ValueError("모든 값에는 같은 이름의 source와 source_ref가 필요합니다.")
-    if not set(sources.values()) <= allowed_sources:
+    if set(provenance) != value_keys:
+        raise ValueError("모든 값에는 같은 이름의 provenance가 필요합니다.")
+    if not {item.source for item in provenance.values()} <= allowed_sources:
         raise ValueError("이 객체에서 허용되지 않는 값 출처가 포함되어 있습니다.")
-    if any(not isinstance(reference, str) or not reference.strip() for reference in source_refs.values()):
-        raise ValueError("source_ref는 비어 있지 않은 문자열이어야 합니다.")
 
 
 @dataclass(frozen=True)
@@ -148,24 +167,20 @@ class AgentInput:
     message_id: str
     text: str
     business_inputs: JsonObject = field(default_factory=dict)
-    sources: dict[str, ValueSource] = field(default_factory=dict)
-    source_refs: dict[str, str] = field(default_factory=dict)
+    provenance: dict[str, Provenance] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         _require_text(self.message_id, "message_id")
         _require_text(self.text, "text")
         values = _copy_object(self.business_inputs)
-        sources = _copy_sources(self.sources)
-        refs = dict(self.source_refs)
+        provenance = _copy_provenance(self.provenance)
         _validate_value_provenance(
             values,
-            sources,
-            refs,
+            provenance,
             allowed_sources={ValueSource.USER},
         )
         object.__setattr__(self, "business_inputs", values)
-        object.__setattr__(self, "sources", sources)
-        object.__setattr__(self, "source_refs", refs)
+        object.__setattr__(self, "provenance", provenance)
 
 
 @dataclass(frozen=True)
@@ -175,8 +190,7 @@ class Strategy:
     name: str
     operation: str
     business_inputs: JsonObject
-    sources: dict[str, ValueSource]
-    source_refs: dict[str, str]
+    provenance: dict[str, Provenance]
     confirmed: bool = False
 
     def __post_init__(self) -> None:
@@ -185,15 +199,15 @@ class Strategy:
         if not isinstance(self.confirmed, bool):
             raise TypeError("confirmed는 bool이어야 합니다.")
         values = _copy_object(self.business_inputs)
-        sources = _copy_sources(self.sources)
-        refs = dict(self.source_refs)
+        provenance = _copy_provenance(self.provenance)
         allowed = {ValueSource.USER, ValueSource.ENGINE, ValueSource.DEFAULT, ValueSource.LLM}
-        _validate_value_provenance(values, sources, refs, allowed_sources=allowed)
-        if self.confirmed and ValueSource.LLM in sources.values():
+        _validate_value_provenance(values, provenance, allowed_sources=allowed)
+        if self.confirmed and any(
+            item.source is ValueSource.LLM for item in provenance.values()
+        ):
             raise ValueError("확정된 전략에는 LLM 출처의 사업 입력을 사용할 수 없습니다.")
         object.__setattr__(self, "business_inputs", values)
-        object.__setattr__(self, "sources", sources)
-        object.__setattr__(self, "source_refs", refs)
+        object.__setattr__(self, "provenance", provenance)
 
 
 @dataclass(frozen=True)
@@ -203,21 +217,17 @@ class ToolCall:
     call_id: str
     name: str
     arguments: JsonObject
-    argument_sources: dict[str, ValueSource] = field(default_factory=dict)
-    source_refs: dict[str, str] = field(default_factory=dict)
+    argument_provenance: dict[str, Provenance] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         _require_text(self.call_id, "call_id")
         _require_text(self.name, "name")
-        sources = _copy_sources(self.argument_sources)
-        refs = dict(self.source_refs)
-        if set(sources) != set(refs):
-            raise ValueError("도구 인자 출처에는 같은 경로의 source_ref가 필요합니다.")
-        if any(not isinstance(reference, str) or not reference.strip() for reference in refs.values()):
-            raise ValueError("도구 인자의 source_ref는 비어 있지 않은 문자열이어야 합니다.")
         object.__setattr__(self, "arguments", _copy_object(self.arguments))
-        object.__setattr__(self, "argument_sources", sources)
-        object.__setattr__(self, "source_refs", refs)
+        object.__setattr__(
+            self,
+            "argument_provenance",
+            _copy_provenance(self.argument_provenance),
+        )
 
 
 @dataclass(frozen=True)
@@ -227,7 +237,6 @@ class ToolResult:
     call_id: str
     tool_name: str
     raw: JsonObject
-    error_category: AgentErrorCategory | None = None
     source: ValueSource = field(default=ValueSource.ENGINE, init=False)
 
     def __post_init__(self) -> None:
@@ -236,11 +245,26 @@ class ToolResult:
         raw = _copy_object(self.raw)
         if raw.get("status") not in {"ok", "error"}:
             raise ValueError("도구 결과 status는 ok 또는 error여야 합니다.")
-        if raw["status"] == "ok" and self.error_category is not None:
-            raise ValueError("성공한 도구 결과에는 오류 분류를 붙일 수 없습니다.")
-        if raw["status"] == "error" and self.error_category is None:
-            raise ValueError("실패한 도구 결과에는 오류 분류가 필요합니다.")
         object.__setattr__(self, "raw", raw)
+
+
+@dataclass(frozen=True)
+class AgentError:
+    """Agent가 사용자에게 전달하는 표준화된 실패 상태."""
+
+    code: AgentErrorCategory
+    message: str
+    origin: AgentErrorOrigin
+    retryable: bool = False
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.code, AgentErrorCategory):
+            raise TypeError("code는 AgentErrorCategory여야 합니다.")
+        if not isinstance(self.origin, AgentErrorOrigin):
+            raise TypeError("origin은 AgentErrorOrigin이어야 합니다.")
+        _require_text(self.message, "message")
+        if not isinstance(self.retryable, bool):
+            raise TypeError("retryable은 bool이어야 합니다.")
 
 
 @dataclass(frozen=True)
@@ -284,23 +308,19 @@ class Evidence:
     """설명에 사용할 엔진 근거와 사용자 가정의 원래 출처."""
 
     items: JsonObject
-    sources: dict[str, ValueSource]
-    source_refs: dict[str, str]
+    provenance: dict[str, Provenance]
     limitations: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         items = _copy_object(self.items)
-        sources = _copy_sources(self.sources)
-        refs = dict(self.source_refs)
+        provenance = _copy_provenance(self.provenance)
         _validate_value_provenance(
             items,
-            sources,
-            refs,
+            provenance,
             allowed_sources={ValueSource.USER, ValueSource.ENGINE, ValueSource.DEFAULT},
         )
         object.__setattr__(self, "items", items)
-        object.__setattr__(self, "sources", sources)
-        object.__setattr__(self, "source_refs", refs)
+        object.__setattr__(self, "provenance", provenance)
         object.__setattr__(self, "limitations", tuple(self.limitations))
 
 
@@ -310,28 +330,26 @@ class AgentResponse:
 
     status: AgentResponseStatus
     facts: JsonObject = field(default_factory=dict)
-    fact_sources: dict[str, ValueSource] = field(default_factory=dict)
-    fact_source_refs: dict[str, str] = field(default_factory=dict)
-    decisions: tuple[Decision, ...] = ()
+    fact_provenance: dict[str, Provenance] = field(default_factory=dict)
+    decision: Decision | None = None
     evidence: Evidence | None = None
     explanation: str | None = None
     explanation_source: ValueSource = field(default=ValueSource.LLM, init=False)
     missing_input: MissingInput | None = None
-    error: ToolResult | None = None
+    error: AgentError | None = None
+    tool_results: tuple[ToolResult, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.status, AgentResponseStatus):
             raise TypeError("status는 AgentResponseStatus여야 합니다.")
         facts = _copy_object(self.facts)
-        sources = _copy_sources(self.fact_sources)
-        refs = dict(self.fact_source_refs)
+        provenance = _copy_provenance(self.fact_provenance)
         _validate_value_provenance(
             facts,
-            sources,
-            refs,
+            provenance,
             allowed_sources={ValueSource.ENGINE},
         )
-        decisions = tuple(self.decisions)
+        tool_results = tuple(self.tool_results)
         if self.explanation is not None:
             _require_text(self.explanation, "explanation")
         if self.status is AgentResponseStatus.NEEDS_INPUT and self.missing_input is None:
@@ -339,16 +357,15 @@ class AgentResponse:
         if self.status is AgentResponseStatus.COMPLETED and self.missing_input is not None:
             raise ValueError("completed 응답에는 missing_input을 넣을 수 없습니다.")
         if self.status is AgentResponseStatus.ERROR:
-            if self.error is None or self.error.raw.get("status") != "error":
-                raise ValueError("error 응답에는 실패한 ToolResult가 필요합니다.")
-            if facts or decisions:
+            if self.error is None:
+                raise ValueError("error 응답에는 AgentError가 필요합니다.")
+            if facts or self.decision is not None:
                 raise ValueError("error 응답에는 계산 사실이나 판단을 넣을 수 없습니다.")
         if self.status is not AgentResponseStatus.ERROR and self.error is not None:
-            raise ValueError("error 상태가 아닌 응답에는 오류 결과를 넣을 수 없습니다.")
+            raise ValueError("error 상태가 아닌 응답에는 AgentError를 넣을 수 없습니다.")
         object.__setattr__(self, "facts", facts)
-        object.__setattr__(self, "fact_sources", sources)
-        object.__setattr__(self, "fact_source_refs", refs)
-        object.__setattr__(self, "decisions", decisions)
+        object.__setattr__(self, "fact_provenance", provenance)
+        object.__setattr__(self, "tool_results", tool_results)
 
 
 @dataclass(frozen=True)
@@ -381,11 +398,12 @@ class LLMResponse:
 
     text: str | None = None
     tool_calls: tuple[ToolCall, ...] = ()
+    missing_input: MissingInput | None = None
 
     def __post_init__(self) -> None:
         calls = tuple(self.tool_calls)
         if self.text is not None and not isinstance(self.text, str):
             raise TypeError("text는 문자열 또는 None이어야 합니다.")
-        if (self.text is None or not self.text.strip()) and not calls:
-            raise ValueError("LLMResponse에는 text 또는 tool_calls가 필요합니다.")
+        if (self.text is None or not self.text.strip()) and not calls and self.missing_input is None:
+            raise ValueError("LLMResponse에는 text, tool_calls 또는 missing_input이 필요합니다.")
         object.__setattr__(self, "tool_calls", calls)

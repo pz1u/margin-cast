@@ -25,9 +25,9 @@
 | `DEFAULT` | 엔진이 정의한 기본 설정 | 엔진의 설정 정의. Agent는 명시적으로 적용 |
 | `LLM` | 자연어 설명, 질문 표현, 미확정 전략 후보 | LLM. 실행 조건이나 엔진 사실로 승격 불가 |
 
-중요한 값에는 `source`와 `source_ref`를 연결하는 가벼운 필드별 매핑을 둔다.
-`source_ref`는 사용자 메시지의 해당 입력, 도구 호출 ID와 결과 경로, 기본값 정의 위치 등을
-가리킨다. 모든 값마다 별도 클래스를 만들 필요는 없다.
+중요한 값에는 `Provenance(source, ref)`를 연결하는 가벼운 필드별 매핑을 둔다.
+`ref`는 사용자 메시지의 해당 입력, 도구 호출 ID와 결과 경로, 기본값 정의 위치 등을
+가리킨다. 출처와 원본 위치를 한 객체로 묶어 둘 중 하나만 변경되는 상태를 막는다.
 
 - 사용자 발언에서 LLM이 추출했더라도 원문으로 확인 가능한 9,500원은 `USER`다.
 - LLM이 제안한 가격·전환율은 `LLM` 후보다. 사용자가 확인하기 전에는 필수 사업 입력으로
@@ -46,14 +46,15 @@
 
 | 객체 | 주요 필드 | 책임·출처 | 생성·변경 주체 |
 | --- | --- | --- | --- |
-| `AgentInput` | `message_id`, `text`, `business_inputs`, `source_refs` | 원문과 명시된 조건은 USER. 미확정 해석은 별도 보관 | 사용자 입력을 런타임이 기록 |
-| `Strategy` | `name`, `operation`, `business_inputs`, `sources`, `confirmed` | 대안의 조건. 설명·미확정 후보는 LLM, 실행 사업 값은 USER 또는 확인된 ENGINE 문맥 | LLM이 후보 제안, 사용자 확인, 런타임 검증 |
-| `ToolCall` | `call_id`, `name`, `arguments`, `sources` | LLM의 도구 선택 요청. 사업 인자 출처와 DEFAULT 적용을 검증 | LLM 요청을 런타임이 검증·전달 |
-| `ToolResult` | `call_id`, `tool_name`, `raw`, `error_category` | 성공·오류 원본 보존. 분류는 런타임 메타데이터 | Dispatcher 반환을 런타임이 기록 |
+| `AgentInput` | `message_id`, `text`, `business_inputs`, `provenance` | 원문과 명시된 조건은 USER. 미확정 해석은 별도 보관 | 사용자 입력을 런타임이 기록 |
+| `Strategy` | `name`, `operation`, `business_inputs`, `provenance`, `confirmed` | 대안의 조건. 설명·미확정 후보는 LLM, 실행 사업 값은 USER 또는 확인된 ENGINE 문맥 | LLM이 후보 제안, 사용자 확인, 런타임 검증 |
+| `ToolCall` | `call_id`, `name`, `arguments`, `argument_provenance` | LLM의 도구 선택 요청. 사업 인자 출처와 DEFAULT 적용을 검증 | LLM 요청을 런타임이 검증·전달 |
+| `ToolResult` | `call_id`, `tool_name`, `raw` | Dispatcher 성공·오류 원본을 가공 없이 보존 | Dispatcher 반환을 런타임이 기록 |
+| `AgentError` | `code`, `message`, `origin`, `retryable` | 입력·Capability·Tool·Provider·Runtime 실패의 공통 사용자 상태 | 런타임이 원본 오류를 분류 |
 | `MissingInput` | `fields`, `reason`, `question`, `strategy_ref` | 검증된 누락 필드와 필요한 이유. 질문 표현만 LLM 가능 | 런타임이 누락 확인, LLM 또는 고정 문구로 질문 |
 | `Decision` | `action`, `reason`, `source_ref` | ENGINE 판단을 그대로 참조. 자체 재평가하지 않음 | 엔진 생성, 런타임 복사 |
-| `Evidence` | `items`, `limitations`, `assumption_refs` | 관측·모델 근거는 ENGINE. 가정은 원래 USER/DEFAULT 출처를 별도로 보존 | 엔진 응답에서 런타임이 선택·복사 |
-| `AgentResponse` | `status`, `facts`, `decisions`, `evidence`, `explanation`, `missing_input`, `error` | 핵심 값은 ENGINE, 설명은 LLM, 상태는 제어 메타데이터 | 런타임이 원본과 설명을 조합 |
+| `Evidence` | `items`, `provenance`, `limitations` | 관측·모델 근거는 ENGINE. 가정은 원래 USER/DEFAULT 출처를 별도로 보존 | 엔진 응답에서 런타임이 선택·복사 |
+| `AgentResponse` | `status`, `facts`, `decision`, `evidence`, `explanation`, `missing_input`, `error`, `tool_results` | 핵심 값은 ENGINE, 설명은 LLM, Tool 원본은 별도 보존 | 런타임이 원본과 설명을 조합 |
 
 `StaticCapabilities`는 도구별 `tool_schemas`, `output_schemas`,
 `required_user_inputs`, `execution_defaults`를 분리한다. `DynamicCapabilities`는 현재
@@ -61,7 +62,8 @@
 `data_sufficiency`, `model_readiness`, `data_version`을 표현한다. 현재 제공되지 않는 동적
 필드는 빈 객체나 `None`으로 남긴다.
 
-`Evidence.items`의 각 항목은 이름·값·단위·대상 범위·`source_ref`를 담는다.
+`Evidence.items`의 각 항목은 이름·값·단위·대상 범위를 담고 같은 키의 `Provenance`가
+출처와 원본 위치를 가리킨다.
 엔진이 제공하지 않은 항목은 생략하거나 미제공으로 표시한다. 증거 없음은 0이 아니다.
 
 `AgentResponse.status`는 `completed`, `needs_input`, `error`다. `HOLD`는 성공적으로
@@ -115,8 +117,8 @@
 
 ## 6. 오류 분류와 복구
 
-다음 다섯 종류는 Agent의 공통 오류 분류다. 엔진의 원래 `code`, `message`, `details`,
-`retryable`은 별도로 보존하며 기존 엔진 코드를 바꾸지 않는다.
+다음 다섯 종류는 `AgentError.code`의 공통 오류 분류다. 엔진의 원래 `code`, `message`,
+`details`, `retryable`은 `ToolResult.raw`에 보존하며 기존 엔진 코드를 바꾸지 않는다.
 
 | 분류 | 사용자 안내·동작 | 캐시 |
 | --- | --- | --- |
@@ -269,7 +271,7 @@ class LLMProvider:
 ```
 
 `src/llm_provider.py`의 실제 인터페이스다. 공통 `Message`는 역할·내용·도구 호출 ID와
-도구 결과를 표현한다. `LLMResponse`는 `text`와 `tool_calls`를 갖는다.
+도구 결과를 표현한다. `LLMResponse`는 `text`, `tool_calls`, `missing_input`을 갖는다.
 Provider는 공급자별 메시지·도구 형식과 응답을 공통 형식으로 변환한다.
 Provider는 도구를 실행하거나 Decision을 만들지 않는다.
 
