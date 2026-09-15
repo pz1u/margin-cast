@@ -2,9 +2,10 @@
 
 ## 1. 범위와 경계
 
-이 문서는 사용자와 합의한 Agent 설계다. 아직 Schema 클래스, Provider, Agent Loop를
-구현한 것은 아니다. 첫 구현은 Schema와 Provider Interface, 다음은 Mock LLM Loop로
-진행한다. 실제 계산 도구의 계약은 [agent-tool-contract.md](agent-tool-contract.md)를 따른다.
+이 문서는 사용자와 합의한 Agent 설계다. Schema 클래스와 Provider Interface는
+`src/agent_schemas.py`, `src/llm_provider.py`에 구현했다. Agent Loop는 아직 구현하지 않았다.
+다음 구현은 사용자가 실제 Schema를 검토한 뒤 Mock LLM Loop로 진행한다. 실제 계산 도구의
+계약은 [agent-tool-contract.md](agent-tool-contract.md)를 따른다.
 
 - Agent는 의도 파악, 필요한 입력 질문, 전략 후보 구성, 도구 호출, 결과 설명을 담당한다.
 - 판매량·기여이익·탄력성·개선확률·예상 범위·신뢰도·위험도는 계산 엔진만 산출한다.
@@ -53,6 +54,12 @@
 | `Decision` | `action`, `reason`, `source_ref` | ENGINE 판단을 그대로 참조. 자체 재평가하지 않음 | 엔진 생성, 런타임 복사 |
 | `Evidence` | `items`, `limitations`, `assumption_refs` | 관측·모델 근거는 ENGINE. 가정은 원래 USER/DEFAULT 출처를 별도로 보존 | 엔진 응답에서 런타임이 선택·복사 |
 | `AgentResponse` | `status`, `facts`, `decisions`, `evidence`, `explanation`, `missing_input`, `error` | 핵심 값은 ENGINE, 설명은 LLM, 상태는 제어 메타데이터 | 런타임이 원본과 설명을 조합 |
+
+`StaticCapabilities`는 도구별 `tool_schemas`, `output_schemas`,
+`required_user_inputs`, `execution_defaults`를 분리한다. `DynamicCapabilities`는 현재
+`supported_menus`, `limits`, `data`, `limitations`와 향후 엔진이 제공할
+`data_sufficiency`, `model_readiness`, `data_version`을 표현한다. 현재 제공되지 않는 동적
+필드는 빈 객체나 `None`으로 남긴다.
 
 `Evidence.items`의 각 항목은 이름·값·단위·대상 범위·`source_ref`를 담는다.
 엔진이 제공하지 않은 항목은 생략하거나 미제공으로 표시한다. 증거 없음은 0이 아니다.
@@ -261,7 +268,7 @@ class LLMProvider:
         ...
 ```
 
-설계용 인터페이스이며 실행 코드는 아니다. 공통 `Message`는 역할·내용·도구 호출 ID와
+`src/llm_provider.py`의 실제 인터페이스다. 공통 `Message`는 역할·내용·도구 호출 ID와
 도구 결과를 표현한다. `LLMResponse`는 `text`와 `tool_calls`를 갖는다.
 Provider는 공급자별 메시지·도구 형식과 응답을 공통 형식으로 변환한다.
 Provider는 도구를 실행하거나 Decision을 만들지 않는다.
@@ -287,7 +294,7 @@ Ollama Provider와 실제 로컬 모델 검증은 8~9단계에서 진행한다.
 
 ## 10. 다음 구현 단위와 확인 기준
 
-1. Schema + Provider Interface: 필드·출처·누락 상태를 표현하는 최소 구조 확인.
+1. Schema + Provider Interface: 필드·출처·누락 상태를 표현하는 최소 구조 구현 완료.
 2. Mock LLM Loop: 도구 실행 없이 호출·추가 질문·종료 흐름 확인.
 3. 기존 Dispatcher 연결: ENGINE 결과 보존과 capability 캐시 확인.
 4. 정상 호출: 실제 계산 결과와 UI facts의 일치 확인.
