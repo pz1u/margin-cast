@@ -1,6 +1,11 @@
 "use strict";
 
-const state = { capabilities: null, scenarioSequence: 0 };
+const state = {
+  capabilities: null,
+  scenarioSequence: 0,
+  latestPriceFeedback: null,
+  pendingPlans: [],
+};
 const number = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 });
 
 function byId(id) { return document.getElementById(id); }
@@ -10,6 +15,20 @@ function won(value, signed = false) {
   return `${prefix}${number.format(Math.round(numeric))}원`;
 }
 function percent(value) { return `${(Number(value || 0) * 100).toFixed(1)}%`; }
+function localIsoDate(value = new Date()) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+function addDateDays(isoDate, days) {
+  const value = new Date(`${isoDate}T12:00:00`);
+  value.setDate(value.getDate() + days);
+  return localIsoDate(value);
+}
+function predictionInterval(value) {
+  return { mean: value.mean, p10: value.p10, p90: value.p90 };
+}
 
 async function requestJson(path, options = {}) {
   const response = await fetch(path, {
@@ -101,6 +120,116 @@ function addBarChart(container, strategies, recommendedName) {
   });
 }
 
+function prepareFeedback(payload, strategy) {
+  const horizonDays = payload.request.horizon_days;
+  const startDate = payload.weather?.applied_from || localIsoDate();
+  const endDate = payload.weather?.applied_to || addDateDays(startDate, horizonDays - 1);
+  state.latestPriceFeedback = {
+    menu_id: payload.request.menu_id,
+    scenario: {
+      name: strategy.name,
+      list_price: strategy.list_price,
+      discount: strategy.discount,
+    },
+    prediction: {
+      horizon_days: horizonDays,
+      units: predictionInterval(strategy.units),
+      contribution_profit: predictionInterval(strategy.contribution_profit),
+      profit_delta: predictionInterval(strategy.profit_delta),
+    },
+  };
+
+  byId("feedback-no-prediction").hidden = true;
+  byId("feedback-prediction").hidden = false;
+  byId("feedback-strategy").textContent = strategy.name;
+  byId("feedback-prediction-copy").textContent =
+    `${horizonDays}일 · 예상 판매 ${number.format(Math.round(strategy.units.mean))}개 · ` +
+    `예상 기여이익 ${won(strategy.contribution_profit.mean)}`;
+  byId("feedback-name").value = `${strategy.name} ${horizonDays}일 실험`;
+  byId("feedback-start").value = startDate;
+  byId("feedback-end").value = endDate;
+  [
+    "feedback-name",
+    "feedback-start",
+    "feedback-end",
+    "feedback-plan-submit",
+  ].forEach((id) => { byId(id).disabled = false; });
+  byId("feedback-plan-submit").firstElementChild.textContent = "실험 계획 저장하기";
+  byId("feedback-plan-message").textContent = "";
+  byId("feedback-plan-message").classList.remove("is-success");
+}
+
+function renderPendingPlan() {
+  const selected = state.pendingPlans.find(
+    (plan) => plan.feedback_id === byId("feedback-pending").value,
+  );
+  const inputIds = [
+    "feedback-baseline-method",
+    "feedback-units",
+    "feedback-profit",
+    "feedback-baseline-profit",
+    "feedback-submit",
+  ];
+  inputIds.forEach((id) => { byId(id).disabled = !selected; });
+  byId("feedback-pending-card").hidden = !selected;
+  if (!selected) return;
+  byId("feedback-pending-card").textContent =
+    `${selected.scenario.name} · ${selected.start_date}—${selected.end_date} · ` +
+    `예상 기여이익 ${won(selected.prediction.contribution_profit.mean)}`;
+}
+
+function renderPendingPlans(plans, selectedId = null) {
+  state.pendingPlans = plans;
+  const select = byId("feedback-pending");
+  select.replaceChildren();
+  if (!plans.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "저장된 계획 없음";
+    select.append(option);
+    select.disabled = true;
+  } else {
+    plans.forEach((plan) => {
+      const option = document.createElement("option");
+      option.value = plan.feedback_id;
+      option.textContent = `${plan.experiment_name} · ${plan.end_date}`;
+      select.append(option);
+    });
+    select.disabled = false;
+    select.value = selectedId || plans[0].feedback_id;
+  }
+  renderPendingPlan();
+}
+
+function renderFeedbackSummary(summary, record = null) {
+  const count = summary.record_count;
+  byId("feedback-count").textContent = `${number.format(count)}건`;
+  if (!summary.calibration) {
+    byId("feedback-empty").hidden = false;
+    byId("feedback-result").hidden = true;
+    return;
+  }
+
+  const delta = summary.calibration.profit_delta;
+  byId("feedback-empty").hidden = true;
+  byId("feedback-result").hidden = false;
+  byId("feedback-records").textContent = `${number.format(count)}건`;
+  byId("feedback-delta-mae").textContent = won(delta.mean_absolute_error);
+  byId("feedback-coverage").textContent = percent(delta.p80_coverage);
+  byId("feedback-direction").textContent = percent(delta.direction_accuracy);
+  if (record) {
+    const evaluation = record.evaluation.profit_delta;
+    byId("feedback-summary-title").textContent = "실험 결과가 기록됐습니다.";
+    byId("feedback-last-result").textContent =
+      `실제 이익 변화 ${won(evaluation.actual, true)}, 예측 오차 ${won(evaluation.error, true)}. ` +
+      `실제 값은 80% 예측 범위${evaluation.within_80_interval ? " 안에 있습니다." : "를 벗어났습니다."}`;
+  } else {
+    byId("feedback-summary-title").textContent = "누적 보정 상태";
+    byId("feedback-last-result").textContent =
+      "저장된 실제 실험을 기준으로 예측 편향과 불확실성 범위를 평가합니다.";
+  }
+}
+
 function renderPriceResult(payload) {
   const action = payload.recommended_action;
   const recommended = payload.strategies.find((strategy) => strategy.name === action.name);
@@ -130,6 +259,7 @@ function renderPriceResult(payload) {
     byId("price-evidence").textContent = payload.interpretation_notes.join(" ");
   }
   addBarChart(byId("price-chart"), payload.strategies, action.name);
+  prepareFeedback(payload, recommended);
 }
 
 function renderBundleResult(payload) {
@@ -179,6 +309,16 @@ async function initialize() {
     updateDataStrip(capabilities);
     resetScenarios();
     setServiceStatus(true, "계산 엔진 연결됨");
+    try {
+      const [summary, pending] = await Promise.all([
+        requestJson("/api/experiments/feedback/summary"),
+        requestJson("/api/experiments/plans"),
+      ]);
+      renderFeedbackSummary(summary);
+      renderPendingPlans(pending.plans);
+    } catch (error) {
+      byId("feedback-message").textContent = error.message;
+    }
   } catch (error) {
     setServiceStatus(false, "계산 엔진 연결 실패");
     byId("price-message").textContent = error.message;
@@ -215,6 +355,7 @@ byId("use-forecast").addEventListener("change", (event) => {
     horizon.value = horizon.dataset.previousValue || "14";
   }
 });
+byId("feedback-pending").addEventListener("change", renderPendingPlan);
 
 byId("price-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -280,6 +421,90 @@ byId("bundle-form").addEventListener("submit", async (event) => {
   } finally {
     button.disabled = false;
     button.firstElementChild.textContent = "세트 효과 계산하기";
+  }
+});
+
+byId("feedback-plan-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = byId("feedback-plan-submit");
+  const message = byId("feedback-plan-message");
+  if (!state.latestPriceFeedback) {
+    message.textContent = "먼저 가격·할인 전략을 계산하세요.";
+    return;
+  }
+
+  button.disabled = true;
+  message.textContent = "";
+  message.classList.remove("is-success");
+  button.firstElementChild.textContent = "저장 중…";
+  let saved = false;
+  try {
+    const payload = await requestJson("/api/experiments/plans", {
+      method: "POST",
+      body: JSON.stringify({
+        experiment_name: byId("feedback-name").value.trim(),
+        menu_id: state.latestPriceFeedback.menu_id,
+        start_date: byId("feedback-start").value,
+        end_date: byId("feedback-end").value,
+        scenario: state.latestPriceFeedback.scenario,
+        prediction: state.latestPriceFeedback.prediction,
+      }),
+    });
+    saved = true;
+    message.textContent = `계획 저장 완료 · ${payload.plan.feedback_id.slice(0, 8)}`;
+    message.classList.add("is-success");
+    renderPendingPlans([...state.pendingPlans, payload.plan], payload.plan.feedback_id);
+  } catch (error) {
+    message.textContent = error.message;
+  } finally {
+    button.disabled = saved;
+    button.firstElementChild.textContent = saved ? "계획 저장 완료" : "실험 계획 저장하기";
+  }
+});
+
+byId("feedback-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = byId("feedback-submit");
+  const message = byId("feedback-message");
+  const feedbackId = byId("feedback-pending").value;
+  if (!feedbackId) {
+    message.textContent = "완료할 실험 계획을 선택하세요.";
+    return;
+  }
+
+  button.disabled = true;
+  message.textContent = "";
+  message.classList.remove("is-success");
+  button.firstElementChild.textContent = "기록 중…";
+  let saved = false;
+  try {
+    const payload = await requestJson("/api/experiments/feedback", {
+      method: "POST",
+      body: JSON.stringify({
+        feedback_id: feedbackId,
+        baseline_method: byId("feedback-baseline-method").value,
+        actual: {
+          units: Number(byId("feedback-units").value),
+          contribution_profit: Number(byId("feedback-profit").value),
+          baseline_contribution_profit: Number(byId("feedback-baseline-profit").value),
+        },
+      }),
+    });
+    saved = true;
+    message.textContent = `실제 결과 기록 완료 · ${payload.record.feedback_id.slice(0, 8)}`;
+    message.classList.add("is-success");
+    byId("feedback-units").value = "";
+    byId("feedback-profit").value = "";
+    byId("feedback-baseline-profit").value = "";
+    renderPendingPlans(
+      state.pendingPlans.filter((plan) => plan.feedback_id !== feedbackId),
+    );
+    renderFeedbackSummary(payload.summary, payload.record);
+  } catch (error) {
+    message.textContent = error.message;
+  } finally {
+    if (!saved) button.disabled = false;
+    button.firstElementChild.textContent = "실제 결과 기록하기";
   }
 });
 

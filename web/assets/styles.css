@@ -165,6 +165,7 @@ label:has(small) input { padding-right: 34px; }
 .primary-button:hover { color: var(--ink); background: var(--signal); }
 .primary-button:disabled { cursor: wait; opacity: 0.6; }
 .form-message { min-height: 20px; margin: 10px 0 0; color: var(--rust); font-size: 12px; }
+.form-message.is-success { color: var(--signal-dark); }
 
 .empty-result { min-height: 470px; display: flex; flex-direction: column; justify-content: center; padding: 6%; }
 .empty-index { margin: 0; color: var(--rust); font: 700 11px/1 ui-monospace, monospace; letter-spacing: 0.14em; }
@@ -208,6 +209,17 @@ label:has(small) input { padding-right: 34px; }
 
 .rate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 24px; }
 .assumption-warning { margin: 24px 0 0; padding: 13px 14px; border-left: 3px solid var(--rust); color: #6e4a3d; background: #f7e7df; font-size: 12px; }
+.prediction-card { margin-bottom: 22px; padding: 15px; border: 1px solid var(--signal-dark); background: rgba(185, 223, 69, 0.16); }
+.prediction-card span { display: block; color: var(--signal-dark); font-size: 10px; font-weight: 800; letter-spacing: 0.08em; }
+.prediction-card strong { display: block; margin-top: 5px; font-size: 16px; }
+.prediction-card p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.feedback-dates { margin-top: 18px; }
+.feedback-divider { display: flex; align-items: center; gap: 12px; margin: 34px 0 24px; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: 0.08em; }
+.feedback-divider::before, .feedback-divider::after { height: 1px; flex: 1; background: var(--line); content: ""; }
+.pending-card { margin: 12px 0 18px; padding: 10px 12px; border-left: 3px solid var(--blue); color: var(--muted); background: var(--paper); font-size: 11px; }
+.feedback-actual-grid { grid-template-columns: 1fr 1fr; margin-top: 18px; }
+.feedback-actual-grid label:first-child { grid-column: 1 / -1; }
+.field-help { margin: 9px 0 0; color: var(--muted); font-size: 11px; }
 .flow-summary { display: grid; grid-template-columns: 1fr 1fr; margin-top: 28px; border-top: 1px solid var(--line); }
 .flow-item { padding: 14px 5px; border-bottom: 1px solid var(--line); }
 .flow-item:nth-child(odd) { border-right: 1px solid var(--line); }
@@ -241,7 +253,8 @@ footer p { margin: 0; }
   .mode-tabs { margin-top: 44px; }
   .mode-tab { flex: 1; padding-inline: 8px; }
   .control-panel, .result-panel { padding: 28px 19px 34px; }
-  .compact-grid, .rate-grid { grid-template-columns: 1fr; }
+  .compact-grid, .rate-grid, .feedback-actual-grid { grid-template-columns: 1fr; }
+  .feedback-actual-grid label:first-child { grid-column: auto; }
   .scenario-row { grid-template-columns: 1fr 1fr; }
   .scenario-row label:first-of-type { grid-column: 1 / -1; }
   .metric-grid { grid-template-columns: 1fr; }

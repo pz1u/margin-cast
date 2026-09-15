@@ -22,6 +22,10 @@
 | `POST` | `/api/strategies/price` | 가격·할인 전략 비교 |
 | `POST` | `/api/strategies/price/forecast` | 매장 주소의 실제 단기예보를 반영한 가격·할인 비교 |
 | `POST` | `/api/strategies/bundle` | 세트 전략 시뮬레이션 |
+| `POST` | `/api/experiments/plans` | 실행 전 가격 실험의 예측 분포 저장 |
+| `GET` | `/api/experiments/plans` | 실제 결과 입력을 기다리는 실험 계획 조회 |
+| `POST` | `/api/experiments/feedback` | 저장한 계획에 실제 결과 연결 |
+| `GET` | `/api/experiments/feedback/summary` | 누적 오차·80% 구간 포함률 조회 |
 
 가격 비교 본문은 Agent 도구의 `compare_price_strategies`와 같다.
 
@@ -52,3 +56,6 @@ WGS84 좌표로 변환하고 기상청 단기예보를 조회한 뒤 계산 엔�
 현재 서버 기본값은 로컬 접근만 허용한다. 공개 배포에서는 앞단 프록시의 TLS, 요청 제한,
 접근 로그와 운영 오류 수집을 추가해야 한다. 브라우저에 제공하는 파일에는 기상청·카카오
 서버 키를 포함하지 않는다.
+
+실험 피드백은 반드시 계획을 먼저 저장한 뒤 해당 `feedback_id`에 실제 결과를 연결한다.
+요청 형식과 보정 지표는 [실험 피드백과 모델 보정 근거](experiment-feedback.md)에 정리했다.

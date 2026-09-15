@@ -37,6 +37,13 @@ def feedback_payload(
     }
 
 
+def plan_payload():
+    payload = feedback_payload()
+    payload.pop("baseline_method")
+    payload.pop("actual")
+    return payload
+
+
 class ExperimentFeedbackTests(unittest.TestCase):
     def setUp(self):
         self.temporary_directory = tempfile.TemporaryDirectory()
@@ -67,6 +74,43 @@ class ExperimentFeedbackTests(unittest.TestCase):
         self.assertEqual(context.exception.code, "PERIOD_MISMATCH")
         self.assertEqual(context.exception.details["observed_days"], 5)
         self.assertFalse(self.path.exists())
+
+    def test_plan_preserves_prediction_until_actual_result_is_completed(self):
+        planned = self.store.plan(plan_payload())
+        before = self.store.summary("M01")
+
+        completed = self.store.complete(
+            planned["feedback_id"],
+            "matched_period",
+            {
+                "units": 97,
+                "contribution_profit": 610_000,
+                "baseline_contribution_profit": 570_000,
+            },
+        )
+        after = self.store.summary("M01")
+
+        self.assertEqual(planned["status"], "planned")
+        self.assertEqual(before["planned_count"], 1)
+        self.assertEqual(before["record_count"], 0)
+        self.assertEqual(completed["prediction"], planned["prediction"])
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(after["planned_count"], 0)
+        self.assertEqual(after["record_count"], 1)
+
+    def test_completed_plan_cannot_be_recorded_twice(self):
+        planned = self.store.plan(plan_payload())
+        actual = {
+            "units": 97,
+            "contribution_profit": 610_000,
+            "baseline_contribution_profit": 570_000,
+        }
+        self.store.complete(planned["feedback_id"], "matched_period", actual)
+
+        with self.assertRaises(ExperimentFeedbackError) as context:
+            self.store.complete(planned["feedback_id"], "matched_period", actual)
+
+        self.assertEqual(context.exception.code, "FEEDBACK_ALREADY_COMPLETED")
 
     def test_invalid_interval_order_is_rejected(self):
         payload = feedback_payload()

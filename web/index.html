@@ -39,6 +39,7 @@
     <nav class="mode-tabs" aria-label="시뮬레이션 종류" role="tablist">
       <button class="mode-tab is-active" id="price-tab" role="tab" aria-selected="true" aria-controls="price-panel" data-panel="price-panel">가격 · 할인</button>
       <button class="mode-tab" id="bundle-tab" role="tab" aria-selected="false" aria-controls="bundle-panel" data-panel="bundle-panel">세트 구성</button>
+      <button class="mode-tab" id="feedback-tab" role="tab" aria-selected="false" aria-controls="feedback-panel" data-panel="feedback-panel">실험 피드백</button>
     </nav>
 
     <section class="simulator" id="price-panel" role="tabpanel" aria-labelledby="price-tab">
@@ -155,6 +156,78 @@
           </div>
           <div class="flow-summary" id="bundle-orders"></div>
           <aside class="evidence-note"><span>해석 기준</span><p id="bundle-evidence"></p></aside>
+        </div>
+      </section>
+    </section>
+
+    <section class="simulator" id="feedback-panel" role="tabpanel" aria-labelledby="feedback-tab" hidden>
+      <div class="control-panel">
+        <div class="panel-heading">
+          <span class="step-number">01</span>
+          <div><p class="section-kicker">예측 보존</p><h2>실험 계획 저장하기</h2></div>
+        </div>
+
+        <form id="feedback-plan-form">
+          <p class="assumption-warning" id="feedback-no-prediction">먼저 가격·할인 탭에서 전략을 계산하세요. 실행 전 예측 분포를 그대로 저장합니다.</p>
+          <div class="prediction-card" id="feedback-prediction" hidden>
+            <span>저장할 예측</span>
+            <strong id="feedback-strategy">—</strong>
+            <p id="feedback-prediction-copy"></p>
+          </div>
+          <label>실험 이름<input id="feedback-name" maxlength="80" required disabled></label>
+          <div class="form-grid compact-grid feedback-dates">
+            <label>시작일<input id="feedback-start" type="date" required disabled></label>
+            <label>종료일<input id="feedback-end" type="date" required disabled></label>
+          </div>
+          <button class="primary-button" id="feedback-plan-submit" type="submit" disabled><span>실험 계획 저장하기</span><span aria-hidden="true">→</span></button>
+          <p class="form-message" id="feedback-plan-message" role="alert"></p>
+        </form>
+
+        <div class="feedback-divider"><span>실험 종료 후</span></div>
+
+        <form id="feedback-form">
+          <label>완료할 실험
+            <select id="feedback-pending" disabled><option value="">저장된 계획 없음</option></select>
+          </label>
+          <div class="pending-card" id="feedback-pending-card" hidden></div>
+          <label>기준선 산정 방식
+            <select id="feedback-baseline-method" disabled>
+              <option value="matched_period">비슷한 이전 기간</option>
+              <option value="parallel_control">병행 대조군</option>
+            </select>
+          </label>
+          <div class="form-grid feedback-actual-grid">
+            <label>실제 판매량<input id="feedback-units" type="number" min="0" step="1" required disabled><small>개</small></label>
+            <label>실제 기여이익<input id="feedback-profit" type="number" step="1" required disabled><small>원</small></label>
+            <label>기준선 기여이익<input id="feedback-baseline-profit" type="number" step="1" required disabled><small>원</small></label>
+          </div>
+          <p class="field-help">기준선은 같은 기간의 대조군 또는 날씨·요일이 비슷한 이전 기간 합계입니다.</p>
+          <button class="primary-button" id="feedback-submit" type="submit" disabled><span>실제 결과 기록하기</span><span aria-hidden="true">→</span></button>
+          <p class="form-message" id="feedback-message" role="alert"></p>
+        </form>
+      </div>
+
+      <section class="result-panel" aria-labelledby="feedback-result-title">
+        <div class="panel-heading result-heading">
+          <span class="step-number">02</span>
+          <div><p class="section-kicker">보정 상태</p><h2 id="feedback-result-title">누적 실험 평가</h2></div>
+          <span class="decision-badge is-idle" id="feedback-count">0건</span>
+        </div>
+        <div class="empty-result" id="feedback-empty">
+          <p class="empty-index">PREDICT → OBSERVE</p>
+          <h3>실제 결과가 쌓이면 예측 품질을 확인합니다.</h3>
+          <p>한 건의 결과로 모델을 자동 변경하지 않고, 오차와 예측 구간 포함률을 먼저 봅니다.</p>
+        </div>
+        <div class="result-content" id="feedback-result" hidden>
+          <p class="recommendation-name" id="feedback-summary-title">누적 보정 상태</p>
+          <p class="recommendation-reason" id="feedback-last-result"></p>
+          <div class="metric-grid">
+            <div class="metric-primary"><span>기록된 실험</span><strong id="feedback-records">—</strong></div>
+            <div><span>이익 변화 평균 절대 오차</span><strong id="feedback-delta-mae">—</strong></div>
+            <div><span>이익 변화 80% 구간 포함률</span><strong id="feedback-coverage">—</strong></div>
+            <div><span>이익 개선 방향 정확도</span><strong id="feedback-direction">—</strong></div>
+          </div>
+          <aside class="evidence-note"><span>해석 기준</span><p>실험 수가 적을 때 비율은 크게 흔들립니다. 일관된 편향과 구간 포함률을 확인한 뒤 모델 보정을 결정하세요.</p></aside>
         </div>
       </section>
     </section>

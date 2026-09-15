@@ -188,6 +188,33 @@ def normalize_feedback(value):
     }
 
 
+def normalize_experiment_plan(value):
+    """실행 전에 예측 분포를 고정하며 실제 기준선 방식과 결과는 받지 않는다."""
+    expected = {
+        "experiment_name",
+        "menu_id",
+        "start_date",
+        "end_date",
+        "scenario",
+        "prediction",
+    }
+    _require_exact_fields(value, expected, "plan")
+    normalized = normalize_feedback(
+        {
+            **value,
+            "baseline_method": "matched_period",
+            "actual": {
+                "units": 0,
+                "contribution_profit": 0,
+                "baseline_contribution_profit": 0,
+            },
+        }
+    )
+    normalized.pop("baseline_method")
+    normalized.pop("actual")
+    return normalized
+
+
 def _evaluate_interval(prediction, actual):
     error = actual - prediction["mean"]
     return {
@@ -276,33 +303,117 @@ class ExperimentFeedbackStore:
         return records
 
     def _write(self, records):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary_name = tempfile.mkstemp(
-            dir=self.path.parent, prefix=f".{self.path.stem}-", suffix=".tmp"
-        )
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            descriptor, temporary_name = tempfile.mkstemp(
+                dir=self.path.parent, prefix=f".{self.path.stem}-", suffix=".tmp"
+            )
+        except OSError as error:
+            raise ExperimentFeedbackError(
+                "FEEDBACK_STORE_UNAVAILABLE", "실험 피드백 저장소를 준비할 수 없습니다."
+            ) from error
         temporary_path = Path(temporary_name)
         try:
-            with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
-                json.dump(records, stream, ensure_ascii=False, indent=2)
-                stream.write("\n")
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temporary_path, self.path)
+            try:
+                with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+                    json.dump(records, stream, ensure_ascii=False, indent=2)
+                    stream.write("\n")
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temporary_path, self.path)
+            except OSError as error:
+                raise ExperimentFeedbackError(
+                    "FEEDBACK_STORE_UNAVAILABLE", "실험 피드백을 저장할 수 없습니다."
+                ) from error
         finally:
             if temporary_path.exists():
-                temporary_path.unlink()
+                try:
+                    temporary_path.unlink()
+                except OSError:
+                    pass
 
     def record(self, value):
         normalized = normalize_feedback(value)
+        recorded_at = datetime.now().astimezone().isoformat(timespec="seconds")
         record = {
             "feedback_id": uuid4().hex,
-            "recorded_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "status": "completed",
+            "recorded_at": recorded_at,
+            "planned_at": recorded_at,
+            "completed_at": recorded_at,
             **normalized,
             "evaluation": evaluate_feedback(normalized),
         }
         with self._lock:
             records = self._read()
             records.append(record)
+            self._write(records)
+        return record
+
+    def plan(self, value):
+        normalized = normalize_experiment_plan(value)
+        record = {
+            "feedback_id": uuid4().hex,
+            "status": "planned",
+            "planned_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            **normalized,
+        }
+        with self._lock:
+            records = self._read()
+            records.append(record)
+            self._write(records)
+        return record
+
+    def complete(self, feedback_id, baseline_method, actual):
+        if not isinstance(feedback_id, str) or not feedback_id.strip():
+            raise ExperimentFeedbackError(
+                "INVALID_FEEDBACK", "feedback_id는 비어 있지 않은 문자열이어야 합니다."
+            )
+        with self._lock:
+            records = self._read()
+            position = next(
+                (
+                    index
+                    for index, row in enumerate(records)
+                    if row.get("feedback_id") == feedback_id
+                ),
+                None,
+            )
+            if position is None:
+                raise ExperimentFeedbackError(
+                    "FEEDBACK_NOT_FOUND", "해당 실험 계획을 찾을 수 없습니다."
+                )
+            existing = records[position]
+            if existing.get("status", "completed") != "planned":
+                raise ExperimentFeedbackError(
+                    "FEEDBACK_ALREADY_COMPLETED", "이미 실제 결과가 기록된 실험입니다."
+                )
+
+            complete_value = {
+                field: existing[field]
+                for field in (
+                    "experiment_name",
+                    "menu_id",
+                    "start_date",
+                    "end_date",
+                    "scenario",
+                    "prediction",
+                )
+            }
+            complete_value["baseline_method"] = baseline_method
+            complete_value["actual"] = actual
+            normalized = normalize_feedback(complete_value)
+            completed_at = datetime.now().astimezone().isoformat(timespec="seconds")
+            record = {
+                "feedback_id": existing["feedback_id"],
+                "status": "completed",
+                "recorded_at": completed_at,
+                "planned_at": existing["planned_at"],
+                "completed_at": completed_at,
+                **normalized,
+                "evaluation": evaluate_feedback(normalized),
+            }
+            records[position] = record
             self._write(records)
         return record
 
@@ -313,11 +424,20 @@ class ExperimentFeedbackStore:
             records = [row for row in records if row.get("menu_id") == menu_id]
         return records
 
+    def pending(self, menu_id=None):
+        return [
+            row
+            for row in self.list(menu_id)
+            if row.get("status", "completed") == "planned"
+        ]
+
     def summary(self, menu_id=None):
-        records = self.list(menu_id)
+        all_records = self.list(menu_id)
+        records = [row for row in all_records if row.get("evaluation") is not None]
         return {
             "status": "ok",
             "menu_id": menu_id,
+            "planned_count": len(all_records) - len(records),
             **summarize_feedback(records),
             "interpretation_notes": [
                 "80% 구간의 실제 포함률은 실험이 쌓인 뒤 약 80%에 가까운지 확인한다.",

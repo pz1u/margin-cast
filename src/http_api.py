@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 
 from src.agent_tool_contracts import error_result, execute_tool
 from src.decision_service import DecisionServiceError, MarginCastDecisionService, SERVICE_VERSION
+from src.experiment_feedback import ExperimentFeedbackError, ExperimentFeedbackStore
 from src.forecast_decision_service import ForecastDecisionError, ForecastDecisionService
 
 
@@ -19,6 +20,9 @@ API_ROUTES = {
     ("POST", "/api/strategies/bundle"): "simulate_bundle_strategy",
 }
 FORECAST_PRICE_ROUTE = "/api/strategies/price/forecast"
+FEEDBACK_ROUTE = "/api/experiments/feedback"
+FEEDBACK_PLAN_ROUTE = "/api/experiments/plans"
+FEEDBACK_SUMMARY_ROUTE = "/api/experiments/feedback/summary"
 ERROR_STATUS = {
     "NOT_FOUND": 404,
     "METHOD_NOT_ALLOWED": 405,
@@ -27,6 +31,11 @@ ERROR_STATUS = {
     "INVALID_PANEL": 503,
     "FORECAST_CONFIGURATION_ERROR": 503,
     "FORECAST_LOOKUP_FAILED": 502,
+    "PERIOD_MISMATCH": 400,
+    "FEEDBACK_STORE_CORRUPT": 500,
+    "FEEDBACK_STORE_UNAVAILABLE": 503,
+    "FEEDBACK_NOT_FOUND": 404,
+    "FEEDBACK_ALREADY_COMPLETED": 409,
 }
 
 
@@ -56,7 +65,14 @@ def api_status(payload):
     return 422
 
 
-def dispatch_api(method, path, body=None, service=None, forecast_service=None):
+def dispatch_api(
+    method,
+    path,
+    body=None,
+    service=None,
+    forecast_service=None,
+    feedback_store=None,
+):
     """HTTP 입력을 도구 계약으로 전달하고 상태 코드와 JSON 객체를 반환한다."""
     method = method.upper()
     if path == "/api/health":
@@ -68,6 +84,74 @@ def dispatch_api(method, path, body=None, service=None, forecast_service=None):
             "service": "MarginCast HTTP API",
             "version": SERVICE_VERSION,
         }
+
+    if path == FEEDBACK_ROUTE:
+        if method != "POST":
+            payload = error_result("METHOD_NOT_ALLOWED", "POST 요청만 지원합니다.")
+            return api_status(payload), payload
+        arguments = _decode_json(body)
+        if isinstance(arguments, dict) and arguments.get("status") == "error":
+            return api_status(arguments), arguments
+        feedback_store = feedback_store or ExperimentFeedbackStore()
+        try:
+            allowed = {"feedback_id", "baseline_method", "actual"}
+            unknown = sorted(set(arguments) - allowed)
+            missing = sorted(allowed - set(arguments))
+            if unknown or missing:
+                raise ExperimentFeedbackError(
+                    "INVALID_FEEDBACK",
+                    "실제 결과 요청의 필드를 확인하세요.",
+                    {"unknown_fields": unknown, "missing_fields": missing},
+                )
+            record = feedback_store.complete(**arguments)
+            payload = {
+                "status": "ok",
+                "record": record,
+                "summary": feedback_store.summary(),
+            }
+        except ExperimentFeedbackError as error:
+            payload = error_result(
+                error.code,
+                error.message,
+                error.details,
+                retryable=error.code == "FEEDBACK_STORE_UNAVAILABLE",
+            )
+        return api_status(payload), payload
+
+    if path == FEEDBACK_PLAN_ROUTE:
+        feedback_store = feedback_store or ExperimentFeedbackStore()
+        try:
+            if method == "POST":
+                arguments = _decode_json(body)
+                if isinstance(arguments, dict) and arguments.get("status") == "error":
+                    return api_status(arguments), arguments
+                plan = feedback_store.plan(arguments)
+                payload = {"status": "ok", "plan": plan}
+            elif method == "GET":
+                payload = {"status": "ok", "plans": feedback_store.pending()}
+            else:
+                payload = error_result(
+                    "METHOD_NOT_ALLOWED", "GET 또는 POST 요청만 지원합니다."
+                )
+        except ExperimentFeedbackError as error:
+            payload = error_result(
+                error.code,
+                error.message,
+                error.details,
+                retryable=error.code == "FEEDBACK_STORE_UNAVAILABLE",
+            )
+        return api_status(payload), payload
+
+    if path == FEEDBACK_SUMMARY_ROUTE:
+        if method != "GET":
+            payload = error_result("METHOD_NOT_ALLOWED", "GET 요청만 지원합니다.")
+            return api_status(payload), payload
+        feedback_store = feedback_store or ExperimentFeedbackStore()
+        try:
+            payload = feedback_store.summary()
+        except ExperimentFeedbackError as error:
+            payload = error_result(error.code, error.message, error.details)
+        return api_status(payload), payload
 
     if path == FORECAST_PRICE_ROUTE:
         if method != "POST":
@@ -133,7 +217,7 @@ def dispatch_api(method, path, body=None, service=None, forecast_service=None):
     return api_status(payload), payload
 
 
-def _handler_class(service, forecast_service, static_dir):
+def _handler_class(service, forecast_service, feedback_store, static_dir):
     static_dir = Path(static_dir).resolve()
 
     class MarginCastRequestHandler(BaseHTTPRequestHandler):
@@ -158,7 +242,7 @@ def _handler_class(service, forecast_service, static_dir):
 
         def _send_api(self, method, path, body=None):
             status, payload = dispatch_api(
-                method, path, body, service, forecast_service
+                method, path, body, service, forecast_service, feedback_store
             )
             self._send_json(status, payload)
 
@@ -210,13 +294,22 @@ def _handler_class(service, forecast_service, static_dir):
     return MarginCastRequestHandler
 
 
-def create_server(host="127.0.0.1", port=8000, *, service=None, static_dir=None):
+def create_server(
+    host="127.0.0.1",
+    port=8000,
+    *,
+    service=None,
+    static_dir=None,
+    feedback_store=None,
+):
     root = Path(__file__).resolve().parents[1]
     service = service or MarginCastDecisionService()
     forecast_service = ForecastDecisionService(service)
+    feedback_store = feedback_store or ExperimentFeedbackStore()
     static_dir = static_dir or root / "web"
     return ThreadingHTTPServer(
-        (host, port), _handler_class(service, forecast_service, static_dir)
+        (host, port),
+        _handler_class(service, forecast_service, feedback_store, static_dir),
     )
 
 

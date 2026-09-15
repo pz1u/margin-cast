@@ -6,6 +6,7 @@ import threading
 import unittest
 
 from src.decision_service import DecisionServiceError
+from src.experiment_feedback import ExperimentFeedbackError
 from src.forecast_decision_service import ForecastDecisionError
 from src.http_api import create_server, dispatch_api
 
@@ -29,6 +30,29 @@ class FakeForecastService:
             "weather_context_source": "kma_forecast",
             "strategies": [],
         }
+
+
+class FakeFeedbackStore:
+    def __init__(self):
+        self.last_record = None
+
+    def plan(self, arguments):
+        self.last_record = arguments
+        return {"feedback_id": "feedback-1", "menu_id": arguments["menu_id"], **arguments}
+
+    def pending(self):
+        return [] if self.last_record is None else [{"feedback_id": "feedback-1"}]
+
+    def complete(self, feedback_id, baseline_method, actual):
+        return {
+            "feedback_id": feedback_id,
+            "menu_id": "M01",
+            "baseline_method": baseline_method,
+            "actual": actual,
+        }
+
+    def summary(self, menu_id=None):
+        return {"status": "ok", "menu_id": menu_id, "record_count": int(self.last_record is not None)}
 
 
 class HttpApiTests(unittest.TestCase):
@@ -126,6 +150,82 @@ class HttpApiTests(unittest.TestCase):
         self.assertEqual(weather_status, 502)
         self.assertTrue(weather["error"]["retryable"])
         self.assertEqual((domain_status, domain["error"]["code"]), (422, "UNSUPPORTED_MENU"))
+
+    def test_feedback_routes_preserve_plan_then_record_actual_result(self):
+        store = FakeFeedbackStore()
+        plan_request = {"menu_id": "M01", "experiment_name": "4일 가격 실험"}
+
+        plan_status, planned = dispatch_api(
+            "POST",
+            "/api/experiments/plans",
+            plan_request,
+            self.service,
+            FakeForecastService(),
+            store,
+        )
+        pending_status, pending = dispatch_api(
+            "GET",
+            "/api/experiments/plans",
+            service=self.service,
+            feedback_store=store,
+        )
+        record_status, recorded = dispatch_api(
+            "POST",
+            "/api/experiments/feedback",
+            {
+                "feedback_id": "feedback-1",
+                "baseline_method": "matched_period",
+                "actual": {
+                    "units": 97,
+                    "contribution_profit": 610_000,
+                    "baseline_contribution_profit": 570_000,
+                },
+            },
+            self.service,
+            FakeForecastService(),
+            store,
+        )
+        summary_status, summary = dispatch_api(
+            "GET",
+            "/api/experiments/feedback/summary",
+            service=self.service,
+            feedback_store=store,
+        )
+
+        self.assertEqual(plan_status, 200)
+        self.assertEqual(planned["plan"]["feedback_id"], "feedback-1")
+        self.assertEqual(pending_status, 200)
+        self.assertEqual(pending["plans"][0]["feedback_id"], "feedback-1")
+        self.assertEqual(record_status, 200)
+        self.assertEqual(recorded["record"]["feedback_id"], "feedback-1")
+        self.assertIsNone(recorded["summary"]["menu_id"])
+        self.assertEqual(summary_status, 200)
+        self.assertEqual(summary["record_count"], 1)
+
+    def test_feedback_route_maps_validation_error(self):
+        class InvalidFeedbackStore(FakeFeedbackStore):
+            def complete(self, feedback_id, baseline_method, actual):
+                raise ExperimentFeedbackError(
+                    "PERIOD_MISMATCH",
+                    "기간 불일치",
+                    {"observed_days": 5, "horizon_days": 4},
+                )
+
+        status, payload = dispatch_api(
+            "POST",
+            "/api/experiments/feedback",
+            {
+                "feedback_id": "feedback-1",
+                "baseline_method": "matched_period",
+                "actual": {},
+            },
+            self.service,
+            FakeForecastService(),
+            InvalidFeedbackStore(),
+        )
+
+        self.assertEqual(status, 400)
+        self.assertEqual(payload["error"]["code"], "PERIOD_MISMATCH")
 
     def test_server_serves_static_site_and_json_api(self):
         with tempfile.TemporaryDirectory() as directory:

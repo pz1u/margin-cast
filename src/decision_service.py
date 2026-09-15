@@ -20,7 +20,7 @@ except ImportError:
     from simulate_strategy import build_reference_forecast, simulate_scenarios
 
 
-SERVICE_VERSION = "0.3.0"
+SERVICE_VERSION = "0.4.0"
 MIN_SIMULATIONS = 100
 MAX_SIMULATIONS = 50_000
 MAX_SCENARIOS = 8
