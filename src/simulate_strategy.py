@@ -68,16 +68,18 @@ def _build_kma_reference(frame, panel, forecasts, menu_id, horizon_days):
     latest = frame[(frame["menu_id"] == menu_id) & (frame["day_index"] == frame["day_index"].max())]
     template = latest.set_index(["hour", "channel"])
     records = []
-    for forecast_date in selected_dates:
+    last_day_index = int(frame["day_index"].max())
+    for forecast_offset, forecast_date in enumerate(selected_dates, start=1):
         day_forecast = forecast[forecast["date"] == forecast_date]
-        day_gap = int((pd.Timestamp(forecast_date) - panel_last_date).days)
         for hour in range(11, 22):
             distances = (day_forecast["hour"] - hour).abs()
             nearest = day_forecast.loc[distances.idxmin()]
             for channel in ("STORE", "DELIVERY"):
                 row = template.loc[(hour, channel)].copy()
                 row["date"] = pd.Timestamp(forecast_date)
-                row["day_index"] = int(frame["day_index"].max()) + day_gap
+                # 합성 데이터의 달력 종료일과 실제 오늘 사이 공백은 학습된 추세가 아니다.
+                # 예보 날짜는 요일에 사용하되 추세 인덱스는 마지막 관측 다음 날부터 잇는다.
+                row["day_index"] = last_day_index + forecast_offset
                 row["weekday"] = int(pd.Timestamp(forecast_date).weekday())
                 row["hour"] = hour
                 row["channel"] = channel
