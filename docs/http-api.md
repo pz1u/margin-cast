@@ -20,6 +20,7 @@
 | `GET` | `/api/health` | 서버 버전과 실행 상태 |
 | `GET` | `/api/capabilities` | 지원 메뉴, 데이터 범위, 입력 한도 |
 | `POST` | `/api/strategies/price` | 가격·할인 전략 비교 |
+| `POST` | `/api/strategies/price/forecast` | 매장 주소의 실제 단기예보를 반영한 가격·할인 비교 |
 | `POST` | `/api/strategies/bundle` | 세트 전략 시뮬레이션 |
 
 가격 비교 본문은 Agent 도구의 `compare_price_strategies`와 같다.
@@ -35,6 +36,13 @@
   "seed": 42
 }
 ```
+
+실제 예보 경로에는 같은 본문에 `address`를 추가한다. 이 경로는 주소를 카카오 로컬 API로
+WGS84 좌표로 변환하고 기상청 단기예보를 조회한 뒤 계산 엔진에 전달한다. 단기예보가 실제로
+제공하는 범위만 사용하도록 `horizon_days`는 1~5일로 제한한다. 현재 시각의 예보가 부족하면
+`INSUFFICIENT_FORECAST` 오류를 반환한다. 응답의 `weather.applied_from`과 `applied_to`는 실제
+계산에 사용한 날짜 범위이며, `available_from`과 `available_to`는 조회된 전체 범위다. Agent 함수
+도구 계약에는 주소 필드를 추가하지 않았다.
 
 도메인 검증 실패도 JSON 오류 객체로 반환한다. 잘못된 입력은 `400`, 없는 경로는 `404`,
 분석 패널이 준비되지 않은 경우는 `503`을 사용한다. 요청 본문은 64KiB로 제한한다.

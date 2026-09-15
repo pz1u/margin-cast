@@ -20,7 +20,7 @@ except ImportError:
     from simulate_strategy import build_reference_forecast, simulate_scenarios
 
 
-SERVICE_VERSION = "0.2.0"
+SERVICE_VERSION = "0.3.0"
 MIN_SIMULATIONS = 100
 MAX_SIMULATIONS = 50_000
 MAX_SCENARIOS = 8
@@ -193,17 +193,26 @@ class MarginCastDecisionService:
         horizon_days=14,
         simulations=10_000,
         seed=42,
+        forecasts=None,
     ):
         self._validate_compare_request(menu_id, scenarios, horizon_days, simulations, seed)
         panel = self._load_panel()
         if menu_id not in self._elasticity_cache:
             self._elasticity_cache[menu_id] = estimate_price_elasticity(panel, menu_id=menu_id)
-        reference_key = (menu_id, horizon_days)
-        if reference_key not in self._reference_cache:
-            self._reference_cache[reference_key] = build_reference_forecast(
-                panel, menu_id=menu_id, horizon_days=horizon_days
+        if forecasts is None:
+            reference_key = (menu_id, horizon_days)
+            if reference_key not in self._reference_cache:
+                self._reference_cache[reference_key] = build_reference_forecast(
+                    panel, menu_id=menu_id, horizon_days=horizon_days
+                )
+            reference, baseline_price, context_source = self._reference_cache[reference_key]
+        else:
+            reference, baseline_price, context_source = build_reference_forecast(
+                panel,
+                menu_id=menu_id,
+                horizon_days=horizon_days,
+                forecasts=forecasts,
             )
-        reference, baseline_price, _ = self._reference_cache[reference_key]
         normalized = [dict(value) for value in scenarios]
         reference_count = sum(
             value["list_price"] - value["discount"] == baseline_price
@@ -240,7 +249,7 @@ class MarginCastDecisionService:
                     panel,
                     self._elasticity_cache[menu_id],
                     scenario,
-                    "observed_history",
+                    context_source,
                 )
             )
         ranked = rank_strategies(results)
@@ -256,6 +265,7 @@ class MarginCastDecisionService:
                 "simulations": simulations,
                 "seed": seed,
             },
+            "weather_context_source": context_source,
             "model": {
                 "elasticity": self._elasticity_cache[menu_id]["elasticity"],
                 "elasticity_standard_error": self._elasticity_cache[menu_id]["robust_standard_error"],
@@ -286,7 +296,11 @@ class MarginCastDecisionService:
                 "highest_expected_profit은 기대값 기준 정렬이며 최종 실행 결정은 아니다.",
                 "decision_ranking은 기대이익·개선확률·80% 하한·신뢰도를 함께 반영한다.",
                 "downside_risk는 현재 대비 기여이익 차이의 10백분위가 0보다 작은 경우 true다.",
-                "미래 날씨 예보가 없으므로 최근 관측 문맥을 재사용했다.",
+                (
+                    "기상청 단기예보를 미래 날짜의 영업시간 문맥으로 사용했다."
+                    if context_source == "kma_forecast"
+                    else "미래 날씨 예보가 없으므로 최근 관측 문맥을 재사용했다."
+                ),
                 "confidence는 근거 품질 점수이며 success_probability와 별개다.",
             ],
         }

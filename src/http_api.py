@@ -8,7 +8,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from src.agent_tool_contracts import error_result, execute_tool
-from src.decision_service import MarginCastDecisionService, SERVICE_VERSION
+from src.decision_service import DecisionServiceError, MarginCastDecisionService, SERVICE_VERSION
+from src.forecast_decision_service import ForecastDecisionError, ForecastDecisionService
 
 
 MAX_BODY_BYTES = 64 * 1024
@@ -17,12 +18,15 @@ API_ROUTES = {
     ("POST", "/api/strategies/price"): "compare_price_strategies",
     ("POST", "/api/strategies/bundle"): "simulate_bundle_strategy",
 }
+FORECAST_PRICE_ROUTE = "/api/strategies/price/forecast"
 ERROR_STATUS = {
     "NOT_FOUND": 404,
     "METHOD_NOT_ALLOWED": 405,
     "PAYLOAD_TOO_LARGE": 413,
     "PANEL_NOT_FOUND": 503,
     "INVALID_PANEL": 503,
+    "FORECAST_CONFIGURATION_ERROR": 503,
+    "FORECAST_LOOKUP_FAILED": 502,
 }
 
 
@@ -52,7 +56,7 @@ def api_status(payload):
     return 422
 
 
-def dispatch_api(method, path, body=None, service=None):
+def dispatch_api(method, path, body=None, service=None, forecast_service=None):
     """HTTP 입력을 도구 계약으로 전달하고 상태 코드와 JSON 객체를 반환한다."""
     method = method.upper()
     if path == "/api/health":
@@ -64,6 +68,51 @@ def dispatch_api(method, path, body=None, service=None):
             "service": "MarginCast HTTP API",
             "version": SERVICE_VERSION,
         }
+
+    if path == FORECAST_PRICE_ROUTE:
+        if method != "POST":
+            payload = error_result("METHOD_NOT_ALLOWED", "POST 요청만 지원합니다.")
+            return api_status(payload), payload
+        arguments = _decode_json(body)
+        if isinstance(arguments, dict) and arguments.get("status") == "error":
+            return api_status(arguments), arguments
+        allowed = {
+            "address",
+            "menu_id",
+            "scenarios",
+            "horizon_days",
+            "simulations",
+            "seed",
+        }
+        unknown = sorted(set(arguments) - allowed)
+        missing = sorted(allowed - set(arguments))
+        if unknown or missing:
+            payload = error_result(
+                "INVALID_ARGUMENTS",
+                "실제 예보 비교 요청의 필드를 확인하세요.",
+                {"unknown_fields": unknown, "missing_fields": missing},
+            )
+            return api_status(payload), payload
+        forecast_service = forecast_service or ForecastDecisionService(service)
+        try:
+            payload = forecast_service.compare_price_strategies(**arguments)
+        except ForecastDecisionError as error:
+            payload = error_result(
+                error.code,
+                error.message,
+                error.details,
+                retryable=error.retryable,
+            )
+        except DecisionServiceError as error:
+            payload = error_result(
+                error.code,
+                error.message,
+                error.details,
+                retryable=error.code in {"PANEL_NOT_FOUND", "INVALID_PANEL"},
+            )
+        except (TypeError, ValueError) as error:
+            payload = error_result("INVALID_ARGUMENTS", str(error))
+        return api_status(payload), payload
 
     tool_name = API_ROUTES.get((method, path))
     if tool_name is None:
@@ -84,7 +133,7 @@ def dispatch_api(method, path, body=None, service=None):
     return api_status(payload), payload
 
 
-def _handler_class(service, static_dir):
+def _handler_class(service, forecast_service, static_dir):
     static_dir = Path(static_dir).resolve()
 
     class MarginCastRequestHandler(BaseHTTPRequestHandler):
@@ -108,7 +157,9 @@ def _handler_class(service, static_dir):
             self.wfile.write(content)
 
         def _send_api(self, method, path, body=None):
-            status, payload = dispatch_api(method, path, body, service)
+            status, payload = dispatch_api(
+                method, path, body, service, forecast_service
+            )
             self._send_json(status, payload)
 
         def _send_static(self, request_path):
@@ -162,8 +213,11 @@ def _handler_class(service, static_dir):
 def create_server(host="127.0.0.1", port=8000, *, service=None, static_dir=None):
     root = Path(__file__).resolve().parents[1]
     service = service or MarginCastDecisionService()
+    forecast_service = ForecastDecisionService(service)
     static_dir = static_dir or root / "web"
-    return ThreadingHTTPServer((host, port), _handler_class(service, static_dir))
+    return ThreadingHTTPServer(
+        (host, port), _handler_class(service, forecast_service, static_dir)
+    )
 
 
 def main():

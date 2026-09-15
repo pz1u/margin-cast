@@ -5,6 +5,8 @@ import tempfile
 import threading
 import unittest
 
+from src.decision_service import DecisionServiceError
+from src.forecast_decision_service import ForecastDecisionError
 from src.http_api import create_server, dispatch_api
 
 
@@ -17,6 +19,16 @@ class FakeService:
 
     def simulate_bundle_strategy(self, **arguments):
         return {"status": "ok", "request": arguments, "strategy": {}}
+
+
+class FakeForecastService:
+    def compare_price_strategies(self, **arguments):
+        return {
+            "status": "ok",
+            "request": arguments,
+            "weather_context_source": "kma_forecast",
+            "strategies": [],
+        }
 
 
 class HttpApiTests(unittest.TestCase):
@@ -61,6 +73,59 @@ class HttpApiTests(unittest.TestCase):
         self.assertEqual((invalid_status, invalid["error"]["code"]), (400, "INVALID_ARGUMENTS"))
         self.assertEqual((missing_status, missing["error"]["code"]), (404, "NOT_FOUND"))
         self.assertEqual((method_status, method["error"]["code"]), (405, "METHOD_NOT_ALLOWED"))
+
+    def test_forecast_price_route_keeps_address_out_of_agent_contract(self):
+        request = {
+            "address": "서울 중구 세종대로 110",
+            "menu_id": "M01",
+            "scenarios": [{"name": "인상", "list_price": 9500, "discount": 0}],
+            "horizon_days": 4,
+            "simulations": 500,
+            "seed": 42,
+        }
+        status, payload = dispatch_api(
+            "POST",
+            "/api/strategies/price/forecast",
+            request,
+            self.service,
+            FakeForecastService(),
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["weather_context_source"], "kma_forecast")
+        self.assertEqual(payload["request"]["address"], request["address"])
+
+    def test_forecast_route_maps_weather_and_domain_errors(self):
+        request = {
+            "address": "서울 중구 세종대로 110",
+            "menu_id": "M01",
+            "scenarios": [{"name": "인상", "list_price": 9500, "discount": 0}],
+            "horizon_days": 4,
+            "simulations": 500,
+            "seed": 42,
+        }
+
+        class WeatherFailure:
+            def compare_price_strategies(self, **arguments):
+                raise ForecastDecisionError(
+                    "FORECAST_LOOKUP_FAILED", "일시적인 조회 실패", retryable=True
+                )
+
+        class DomainFailure:
+            def compare_price_strategies(self, **arguments):
+                raise DecisionServiceError("UNSUPPORTED_MENU", "지원하지 않는 메뉴")
+
+        weather_status, weather = dispatch_api(
+            "POST", "/api/strategies/price/forecast", request,
+            self.service, WeatherFailure()
+        )
+        domain_status, domain = dispatch_api(
+            "POST", "/api/strategies/price/forecast", request,
+            self.service, DomainFailure()
+        )
+
+        self.assertEqual(weather_status, 502)
+        self.assertTrue(weather["error"]["retryable"])
+        self.assertEqual((domain_status, domain["error"]["code"]), (422, "UNSUPPORTED_MENU"))
 
     def test_server_serves_static_site_and_json_api(self):
         with tempfile.TemporaryDirectory() as directory:

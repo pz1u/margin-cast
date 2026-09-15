@@ -1,6 +1,9 @@
 from pathlib import Path
+from datetime import timedelta
 import tempfile
 import unittest
+
+import pandas as pd
 
 from src.decision_service import DecisionServiceError, MarginCastDecisionService
 from src.generate_data import generate_dataset, save_dataset
@@ -55,6 +58,39 @@ class DecisionServiceTests(unittest.TestCase):
         first = self.service.compare_price_strategies("M01", request, simulations=500, seed=9)
         second = self.service.compare_price_strategies("M01", request, simulations=500, seed=9)
         self.assertEqual(first, second)
+
+    def test_future_weather_changes_context_and_confidence_evidence(self):
+        last_date = pd.to_datetime(self.service._load_panel()["date"]).max()
+        forecasts = [
+            {
+                "date": (last_date + timedelta(days=offset)).strftime("%Y-%m-%d"),
+                "time": "12:00",
+                "forecast_at": (
+                    last_date + timedelta(days=offset, hours=12)
+                ).isoformat(),
+                "is_rain": offset == 2,
+                "tmp_c": 22.0 + offset,
+                "pcp_raw": "1mm" if offset == 2 else "강수없음",
+                "pcp_mm_estimate": 1.0 if offset == 2 else 0.0,
+                "pty_code": 1 if offset == 2 else 0,
+                "reh_pct": 70.0,
+            }
+            for offset in (1, 2)
+        ]
+        result = self.service.compare_price_strategies(
+            "M01",
+            [{"name": "가격 인상", "list_price": 9500, "discount": 0}],
+            horizon_days=2,
+            simulations=500,
+            seed=7,
+            forecasts=forecasts,
+        )
+
+        self.assertEqual(result["weather_context_source"], "kma_forecast")
+        self.assertEqual(result["strategies"][1]["confidence"]["components"]["weather_context"], 20.0)
+        self.assertTrue(
+            any("기상청 단기예보" in note for note in result["interpretation_notes"])
+        )
 
     def test_unsupported_menu_has_stable_error_code(self):
         with self.assertRaises(DecisionServiceError) as context:

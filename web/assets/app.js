@@ -109,6 +109,9 @@ function renderPriceResult(payload) {
   setDecision(byId("price-decision"), action.action);
   byId("price-recommendation-name").textContent = action.name;
   byId("price-recommendation-reason").textContent = action.reason;
+  byId("price-weather-context").textContent = payload.weather
+    ? `실제 단기예보 · ${payload.weather.applied_from}—${payload.weather.applied_to}`
+    : "최근 관측 날씨 문맥";
   byId("price-profit-delta").textContent = won(recommended.profit_delta.mean, true);
   byId("price-profit-range").textContent = `${won(recommended.profit_delta.p10, true)} — ${won(recommended.profit_delta.p90, true)}`;
   byId("price-success").textContent = percent(recommended.success_probability);
@@ -195,6 +198,23 @@ document.querySelectorAll(".mode-tab").forEach((tab) => {
 
 byId("add-scenario").addEventListener("click", () => addScenario());
 byId("menu-select").addEventListener("change", resetScenarios);
+byId("use-forecast").addEventListener("change", (event) => {
+  const enabled = event.target.checked;
+  const addressField = byId("forecast-address-field");
+  const address = byId("store-address");
+  const horizon = byId("price-horizon");
+  addressField.hidden = !enabled;
+  address.required = enabled;
+  if (enabled) {
+    horizon.dataset.previousValue = horizon.value;
+    horizon.value = "4";
+    horizon.disabled = true;
+    address.focus();
+  } else {
+    horizon.disabled = false;
+    horizon.value = horizon.dataset.previousValue || "14";
+  }
+});
 
 byId("price-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -204,15 +224,21 @@ byId("price-form").addEventListener("submit", async (event) => {
   message.textContent = "";
   button.firstElementChild.textContent = "계산 중…";
   try {
-    const payload = await requestJson("/api/strategies/price", {
+    const useForecast = byId("use-forecast").checked;
+    const request = {
+      menu_id: byId("menu-select").value,
+      scenarios: scenarioPayload(),
+      horizon_days: Number(byId("price-horizon").value),
+      simulations: Number(byId("price-simulations").value),
+      seed: Number(byId("price-seed").value),
+    };
+    if (useForecast) request.address = byId("store-address").value.trim();
+    const endpoint = useForecast
+      ? "/api/strategies/price/forecast"
+      : "/api/strategies/price";
+    const payload = await requestJson(endpoint, {
       method: "POST",
-      body: JSON.stringify({
-        menu_id: byId("menu-select").value,
-        scenarios: scenarioPayload(),
-        horizon_days: Number(byId("price-horizon").value),
-        simulations: Number(byId("price-simulations").value),
-        seed: Number(byId("price-seed").value),
-      }),
+      body: JSON.stringify(request),
     });
     renderPriceResult(payload);
   } catch (error) {

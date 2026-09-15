@@ -50,7 +50,15 @@
 
         <div class="form-grid compact-grid">
           <label>메뉴<select id="menu-select" name="menu_id" required></select></label>
-          <label>비교 기간<select id="price-horizon" name="horizon_days"><option value="7">7일</option><option value="14" selected>14일</option><option value="30">30일</option></select></label>
+          <label>비교 기간<select id="price-horizon" name="horizon_days"><option value="4">4일</option><option value="7">7일</option><option value="14" selected>14일</option><option value="30">30일</option></select></label>
+        </div>
+
+        <div class="forecast-option">
+          <label class="check-label"><input id="use-forecast" type="checkbox"><span>실제 단기예보 반영</span></label>
+          <p>선택하면 비교 기간이 4일로 바뀌고, 주소를 카카오 좌표 검색과 기상청 예보에 사용합니다.</p>
+          <div id="forecast-address-field" hidden>
+            <label>매장 주소<input id="store-address" maxlength="200" autocomplete="street-address" placeholder="도로명 또는 지번 주소"></label>
+          </div>
         </div>
 
         <div class="scenario-heading">
@@ -87,6 +95,7 @@
         <div class="result-content" id="price-result" hidden>
           <p class="recommendation-name" id="price-recommendation-name"></p>
           <p class="recommendation-reason" id="price-recommendation-reason"></p>
+          <p class="context-line" id="price-weather-context"></p>
           <div class="metric-grid">
             <div class="metric-primary"><span>기대 기여이익 변화</span><strong id="price-profit-delta">—</strong></div>
             <div><span>80% 예상 범위</span><strong id="price-profit-range">—</strong></div>
