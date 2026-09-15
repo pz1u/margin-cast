@@ -168,5 +168,6 @@ Agent와 웹사이트는 같은 계산 경계를 HTTP로 사용할 수 있습니
 .\.venv\Scripts\python.exe -m src.http_api
 ```
 
-기본 접속 주소는 `http://127.0.0.1:8000`입니다. 경로와 요청 형식은
+기본 접속 주소는 `http://127.0.0.1:8000`입니다. 이 주소에서 전략 입력과 결과 비교 웹사이트도
+함께 열립니다. 화면 사용법은 [MarginCast 웹사이트](docs/web.md), 경로와 요청 형식은
 [MarginCast HTTP API](docs/http-api.md)를 참고하세요.
