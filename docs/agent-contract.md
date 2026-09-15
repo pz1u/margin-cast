@@ -3,9 +3,9 @@
 ## 1. 범위와 경계
 
 이 문서는 사용자와 합의한 Agent 설계다. Schema 클래스와 Provider Interface는
-`src/agent_schemas.py`, `src/llm_provider.py`에 구현했다. Agent Loop는 아직 구현하지 않았다.
-다음 구현은 사용자가 실제 Schema를 검토한 뒤 Mock LLM Loop로 진행한다. 실제 계산 도구의
-계약은 [agent-tool-contract.md](agent-tool-contract.md)를 따른다.
+`src/agent_schemas.py`, `src/llm_provider.py`에 구현했다. 공급자 응답과 주입된 도구 실행기를
+연결하는 최소 Loop는 `src/agent_runtime.py`에 구현했다. 실제 계산 도구의 계약은
+[agent-tool-contract.md](agent-tool-contract.md)를 따른다.
 
 - Agent는 의도 파악, 필요한 입력 질문, 전략 후보 구성, 도구 호출, 결과 설명을 담당한다.
 - 판매량·기여이익·탄력성·개선확률·예상 범위·신뢰도·위험도는 계산 엔진만 산출한다.
@@ -297,7 +297,7 @@ Ollama Provider와 실제 로컬 모델 검증은 8~9단계에서 진행한다.
 ## 10. 다음 구현 단위와 확인 기준
 
 1. Schema + Provider Interface: 필드·출처·누락 상태를 표현하는 최소 구조 구현 완료.
-2. Mock LLM Loop: 도구 실행 없이 호출·추가 질문·종료 흐름 확인.
+2. Mock LLM Loop: 정상·입력 부족·데이터 부족·도구 오류 흐름 구현 완료.
 3. 기존 Dispatcher 연결: ENGINE 결과 보존과 capability 캐시 확인.
 4. 정상 호출: 실제 계산 결과와 UI facts의 일치 확인.
 5. Missing Input: 미확정 사업 입력의 실행 방지, 질문 후 재개 확인.
