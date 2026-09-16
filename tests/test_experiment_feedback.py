@@ -3,6 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from src.evidence_quality import EVIDENCE_QUALITY_POLICY_FINGERPRINT
 from src.experiment_feedback import (
     ExperimentFeedbackError,
     ExperimentFeedbackStore,
@@ -43,6 +44,7 @@ def feedback_payload(
             },
             "evidence_quality": {
                 "version": "heuristic-v1",
+                "formula_fingerprint": EVIDENCE_QUALITY_POLICY_FINGERPRINT,
                 "label": "MEDIUM",
                 "score": 70.0,
                 "validation_status": "PENDING_REAL_STORE_FEEDBACK",
@@ -86,6 +88,19 @@ class ExperimentFeedbackTests(unittest.TestCase):
         self.assertEqual(
             record["decision_context"]["evidence_quality"]["version"], "heuristic-v1"
         )
+
+    def test_single_record_summary_reports_stable_metrics(self):
+        self.store.record(feedback_payload())
+
+        summary = self.store.summary("M01")
+
+        self.assertEqual(summary["record_count"], 1)
+        self.assertEqual(summary["calibration"]["units"]["mean_absolute_error"], 3.0)
+        self.assertEqual(summary["calibration"]["units"]["p80_coverage"], 1.0)
+        profit_delta = summary["calibration"]["profit_delta"]
+        self.assertEqual(profit_delta["mean_absolute_error"], 10_000.0)
+        self.assertEqual(profit_delta["p80_coverage"], 1.0)
+        self.assertEqual(profit_delta["direction_accuracy"], 1.0)
 
     def test_period_must_match_prediction_horizon(self):
         payload = feedback_payload()
@@ -165,6 +180,9 @@ class ExperimentFeedbackTests(unittest.TestCase):
         self.assertEqual(summary["calibration"]["profit_delta"]["direction_accuracy"], 0.5)
         quality = summary["evidence_quality_calibration"][0]
         self.assertEqual(quality["version"], "heuristic-v1")
+        self.assertEqual(
+            quality["formula_fingerprint"], EVIDENCE_QUALITY_POLICY_FINGERPRINT
+        )
         self.assertEqual(quality["label"], "MEDIUM")
         self.assertEqual(quality["record_count"], 2)
 

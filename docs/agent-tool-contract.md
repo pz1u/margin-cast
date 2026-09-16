@@ -29,7 +29,8 @@
 
 모든 계산 결과는 `data_provenance`로 합성/실제 데이터 여부와 데이터 버전을 밝힌다. 현재는
 `SYNTHETIC_DATA_PROTOTYPE`이며 실제 매장 성과를 보증하지 않는다. `evidence_quality`는
-`heuristic-v1`이고 실제 매장 결과와의 관계가 아직 검증되지 않은 상태다.
+`heuristic-v1`이고 실제 매장 결과와의 관계가 아직 검증되지 않은 상태다. `version`과 함께
+`formula_fingerprint`를 보존해 당시 가중치·임계값을 재현한다.
 
 ### `simulate_bundle_strategy`
 

@@ -15,7 +15,8 @@
 
 전략 응답의 `data_provenance`는 현재 데이터가 `synthetic-pos-v2`이며 실제 매장 데이터가
 아님을 명시한다. `evidence_quality`는 성공확률과 다른 `heuristic-v1` 근거 품질 점수이고,
-실제 매장 결과와의 관계가 아직 검증되지 않았다. 산식과 해석은
+`formula_fingerprint`로 산식 정책을 식별한다. 실제 매장 결과와의 관계는 아직 검증되지
+않았다. 산식과 해석은
 [Decision Engine 데이터 출처와 판단 방법](decision-methodology.md)을 참고한다.
 
 ## 경로

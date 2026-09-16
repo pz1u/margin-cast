@@ -111,7 +111,13 @@ def _normalize_decision_context(value):
             "decision_context.weather_context.menu_specific_causal_effect_validated는 boolean이어야 합니다.",
         )
 
-    quality_fields = {"version", "label", "score", "validation_status"}
+    quality_fields = {
+        "version",
+        "formula_fingerprint",
+        "label",
+        "score",
+        "validation_status",
+    }
     quality = value["evidence_quality"]
     _require_exact_fields(quality, quality_fields, "decision_context.evidence_quality")
     if quality["label"] not in {"LOW", "MEDIUM", "HIGH"}:
@@ -153,6 +159,11 @@ def _normalize_decision_context(value):
         "evidence_quality": {
             "version": _required_string(
                 quality["version"], "decision_context.evidence_quality.version", 40
+            ),
+            "formula_fingerprint": _required_string(
+                quality["formula_fingerprint"],
+                "decision_context.evidence_quality.formula_fingerprint",
+                64,
             ),
             "label": quality["label"],
             "score": score,
@@ -383,13 +394,20 @@ def summarize_feedback(records):
         quality = record.get("decision_context", {}).get("evidence_quality")
         if not quality:
             continue
-        key = (quality["version"], quality["label"])
+        key = (
+            quality["version"],
+            quality["formula_fingerprint"],
+            quality["label"],
+        )
         quality_groups.setdefault(key, []).append(record["evaluation"]["profit_delta"])
     quality_calibration = []
-    for (version, label), evaluations in sorted(quality_groups.items()):
+    for (version, formula_fingerprint, label), evaluations in sorted(
+        quality_groups.items()
+    ):
         quality_calibration.append(
             {
                 "version": version,
+                "formula_fingerprint": formula_fingerprint,
                 "label": label,
                 "record_count": len(evaluations),
                 "profit_delta_mean_absolute_error": _mean(

@@ -154,6 +154,7 @@ function prepareFeedback(payload, strategy) {
       },
       evidence_quality: {
         version: strategy.evidence_quality.version,
+        formula_fingerprint: strategy.evidence_quality.formula_fingerprint,
         label: strategy.evidence_quality.label,
         score: strategy.evidence_quality.score,
         validation_status: strategy.evidence_quality.validation.status,

@@ -204,7 +204,7 @@ pending_question
 ## 10. `evidence_quality` 해석 규칙
 
 - 성공확률과 같은 값으로 설명하지 않는다.
-- `version`을 감사 로그와 실험 계획에 저장한다.
+- `version`과 `formula_fingerprint`를 감사 로그와 실험 계획에 저장한다.
 - `empirically_calibrated=false`이면 “미보정 휴리스틱”이라고 표현한다.
 - `HIGH`여도 실제 사업 결과를 보증한다고 표현하지 않는다.
 - 실제 실험이 쌓이면 `evidence_quality_calibration`의 버전·등급별 기록 수, MAE, 80% 구간
@@ -238,15 +238,22 @@ Call에 전달한다. 실제 결과나 기준선을 Agent가 추정해서 채우
 
 Agent 자체 감사 로그에는 다음 값만 추가한다.
 
+- 추천 단위의 고유 `recommendation_id`
 - Agent 프롬프트 버전
 - 사용 모델 식별자
 - 호출 도구 이름
 - 도구 입력의 민감값 제거본 또는 해시
 - 도구 결과 ID
 - 최종 설명에서 선택한 행동
-- 사용자 선택과 연결된 실험 ID
+- 사용자 선택과 연결된 `feedback_id`
+- 실제 결과 연결 상태(`not_planned`, `planned`, `completed`)
 
 API 키, 주소 원문과 전체 대화 원문은 감사 로그에서 제외한다.
+
+현재 계산 엔진에는 `feedback_id`와 `planned`/`completed` 상태가 구현돼 있다. 위 Agent 감사
+로그는 본체 구현 단계의 계약이며 아직 저장소나 런타임이 구현된 상태가 아니다. 따라서
+`feedback_id`를 `recommendation_id`로 대신 사용하지 않는다. Agent가 추천을 만들 때 먼저
+`recommendation_id`를 발급하고, 사용자가 실험을 선택한 경우에만 생성된 `feedback_id`를 연결한다.
 
 ## 13. 오류 처리
 

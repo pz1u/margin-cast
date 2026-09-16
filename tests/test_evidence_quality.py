@@ -2,7 +2,12 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from src.evidence_quality import calculate_evidence_quality
+from src.evidence_quality import (
+    EVIDENCE_QUALITY_POLICY,
+    EVIDENCE_QUALITY_POLICY_FINGERPRINT,
+    calculate_evidence_quality,
+    validate_evidence_quality_version,
+)
 from src.estimate_elasticity import estimate_price_elasticity
 from src.generate_data import generate_dataset, save_dataset
 from src.prepare_analysis_data import prepare_analysis_data
@@ -33,6 +38,9 @@ class EvidenceQualityTests(unittest.TestCase):
         )
         self.assertFalse(result["is_probability"])
         self.assertEqual(result["version"], "heuristic-v1")
+        self.assertEqual(
+            result["formula_fingerprint"], EVIDENCE_QUALITY_POLICY_FINGERPRINT
+        )
         self.assertFalse(result["validation"]["empirically_calibrated"])
         self.assertIn(result["label"], {"LOW", "MEDIUM", "HIGH"})
         self.assertEqual(sum(result["components"].values()), result["score"])
@@ -52,6 +60,13 @@ class EvidenceQualityTests(unittest.TestCase):
         )
         self.assertGreater(forecast["score"], observed["score"])
         self.assertGreater(observed["score"], outside["score"])
+
+    def test_policy_change_requires_a_new_registered_version(self):
+        changed_policy = dict(EVIDENCE_QUALITY_POLICY)
+        changed_policy["high_threshold"] = 81.0
+
+        with self.assertRaises(RuntimeError):
+            validate_evidence_quality_version(changed_policy, "heuristic-v1")
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from src.evidence_quality import EVIDENCE_QUALITY_POLICY_FINGERPRINT
 from src.generate_data import generate_dataset, save_dataset
 from src.prepare_analysis_data import load_observed_tables, prepare_analysis_data
 from src.simulate_bundle import (
@@ -45,6 +46,10 @@ class BundleSimulationTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(first["evidence_quality"]["label"], "LOW")
         self.assertEqual(first["evidence_quality"]["version"], "heuristic-v1")
+        self.assertEqual(
+            first["evidence_quality"]["formula_fingerprint"],
+            EVIDENCE_QUALITY_POLICY_FINGERPRINT,
+        )
         self.assertFalse(
             first["evidence_quality"]["validation"]["empirically_calibrated"]
         )

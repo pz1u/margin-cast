@@ -9,11 +9,18 @@ import pandas as pd
 
 try:
     from .evidence_quality import (
+        EVIDENCE_QUALITY_POLICY,
+        EVIDENCE_QUALITY_POLICY_FINGERPRINT,
         EVIDENCE_QUALITY_VALIDATION_STATUS,
         EVIDENCE_QUALITY_VERSION,
     )
 except ImportError:
-    from evidence_quality import EVIDENCE_QUALITY_VALIDATION_STATUS, EVIDENCE_QUALITY_VERSION
+    from evidence_quality import (
+        EVIDENCE_QUALITY_POLICY,
+        EVIDENCE_QUALITY_POLICY_FINGERPRINT,
+        EVIDENCE_QUALITY_VALIDATION_STATUS,
+        EVIDENCE_QUALITY_VERSION,
+    )
 
 try:
     from .generate_data import PAYMENT_RATE, PLATFORM_RATE
@@ -216,7 +223,8 @@ def simulate_bundle(
         "success_probability": float(np.mean(profit_delta > 0)),
         "evidence_quality": {
             "version": EVIDENCE_QUALITY_VERSION,
-            "score": 35.0,
+            "formula_fingerprint": EVIDENCE_QUALITY_POLICY_FINGERPRINT,
+            "score": EVIDENCE_QUALITY_POLICY["bundle_fixed_score"],
             "label": "LOW",
             "is_probability": False,
             "validation": {
