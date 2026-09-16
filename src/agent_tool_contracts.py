@@ -16,7 +16,8 @@ TOOL_SCHEMAS = [
         "name": "get_margincast_capabilities",
         "description": (
             "MarginCast 계산 엔진이 전략 비교를 지원하는 메뉴, 입력 한도, 데이터 범위와 "
-            "중요한 해석 제약을 조회한다. 전략 비교 전에 먼저 호출한다."
+            "중요한 해석 제약을 조회한다. 유효한 세션 정보가 없거나 지원 여부가 "
+            "불명확할 때 호출한다."
         ),
         "strict": True,
         "parameters": {

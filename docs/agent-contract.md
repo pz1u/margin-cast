@@ -4,8 +4,11 @@
 
 이 문서는 사용자와 합의한 Agent 설계다. Schema 클래스와 Provider Interface는
 `src/agent_schemas.py`, `src/llm_provider.py`에 구현했다. 공급자 응답과 주입된 도구 실행기를
-연결하는 최소 Loop는 `src/agent_runtime.py`에 구현했다. 실제 계산 도구의 계약은
-[agent-tool-contract.md](agent-tool-contract.md)를 따른다.
+연결하는 최소 Loop는 `src/agent_runtime.py`에 구현했다. `src/agent_integration.py`가 기존
+`TOOL_SCHEMAS`, `execute_tool()`과 `MarginCastDecisionService`를 Loop에 연결한다. 실제 계산
+도구의 계약은 [agent-tool-contract.md](agent-tool-contract.md)를 따른다.
+LLM에 등록하는 Tool Schema에서는 엔진 기본값이 있는 실행 설정을 선택 입력으로 노출하고,
+Loop가 Dispatcher 호출 전에 해당 기본값을 명시적으로 채운다.
 
 - Agent는 의도 파악, 필요한 입력 질문, 전략 후보 구성, 도구 호출, 결과 설명을 담당한다.
 - 판매량·기여이익·탄력성·개선확률·예상 범위·신뢰도·위험도는 계산 엔진만 산출한다.
@@ -298,7 +301,7 @@ Ollama Provider와 실제 로컬 모델 검증은 8~9단계에서 진행한다.
 
 1. Schema + Provider Interface: 필드·출처·누락 상태를 표현하는 최소 구조 구현 완료.
 2. Mock LLM Loop: 정상·입력 부족·데이터 부족·도구 오류 흐름 구현 완료.
-3. 기존 Dispatcher 연결: ENGINE 결과 보존과 capability 캐시 확인.
+3. 기존 Dispatcher 연결: ENGINE 결과 보존과 capability 세션 캐시 구현 완료.
 4. 정상 호출: 실제 계산 결과와 UI facts의 일치 확인.
 5. Missing Input: 미확정 사업 입력의 실행 방지, 질문 후 재개 확인.
 6. Tool Error: 오류 분류·캐시 처리·결과 미생성 확인.
@@ -307,4 +310,5 @@ Ollama Provider와 실제 로컬 모델 검증은 8~9단계에서 진행한다.
 9. 로컬 end-to-end: 사용자 선택 모델로 실제 대화·도구 호출·설명 검증.
 
 각 논리 단위를 검증 후 한국어 Conventional Commit으로 남긴다.
-이번 산출물은 이 문서와 관련 문서 정합성 수정까지이며 런타임 구현을 포함하지 않는다.
+현재 구현은 실제 Dispatcher 연결까지 포함한다. UI facts 투영과 설명 일치 검증은 다음
+논리 단위에서 진행한다.
