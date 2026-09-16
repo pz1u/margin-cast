@@ -2,7 +2,7 @@
 
 ## 1. 문서 상태
 
-- 상태: 구현 전 기획 확정안
+- 상태: 구현 전 계약 확정안 v1.1
 - 대상: MarginCast Agent v1
 - 구현 주도: 사용자
 - 지원: Codex가 계산 도구 연결, 코드 리뷰, 디버깅과 평가를 지원
@@ -20,6 +20,13 @@ Agent가 답해야 하는 핵심 질문은 다음과 같다.
 
 Agent는 상담형 계산 인터페이스다. 수요·이익·탄력성·성공확률·예상 범위와 근거 품질을 직접
 생성하지 않는다.
+
+v1.1의 핵심 원칙은 다음과 같다.
+
+- 모든 숫자는 `USER`, `ENGINE`, `DEFAULT` 중 하나의 출처를 가져야 한다.
+- `DEFAULT`는 시스템 프롬프트의 상수가 아니라 Tool Contract가 반환한 엔진 기본값이다.
+- UI 핵심 수치와 Decision은 LLM 문장을 파싱하지 않고 구조화된 `AgentResponse.facts`에서 읽는다.
+- LLM 모델이 바뀌어도 동일한 ToolResult의 핵심 수치와 Decision은 달라지지 않는다.
 
 ## 3. v1 범위
 
@@ -48,17 +55,17 @@ Agent는 상담형 계산 인터페이스다. 수요·이익·탄력성·성공�
 
 ## 4. 역할 분리
 
-| 영역 | Agent | 계산·데이터 계층 |
-|---|---|---|
-| 사용자 의도 파악 | 담당 | — |
-| 누락 입력 질문 | 담당 | 입력 유효성 검증 |
-| 전략 후보 구성 | 담당 | 지원 범위 검증 |
-| 예상 판매량·이익 | 설명만 담당 | Simulation Engine 계산 |
-| 개선확률·예상 범위 | 설명만 담당 | Monte Carlo 계산 |
-| 근거 품질 | 상태와 한계 설명 | `evidence_quality` 계산 |
-| 실행 판단 | 사용자 친화적으로 설명 | Decision Engine 판정 |
-| 실험 계획 | 저장 여부와 입력 확인 | Feedback Store 보존 |
-| 실제 결과 평가 | 결과 해석 | Feedback Engine 계산 |
+| 영역 | LLM | Response Policy | 계산·데이터 계층 |
+|---|---|---|---|
+| 사용자 의도 파악 | 담당 | 필수 입력 확인 | — |
+| 누락 입력 질문 | 문장 생성 | 질문 필요 여부 판정 | 입력 유효성 검증 |
+| 전략 후보 구성 | 사용자 조건 정리 | 출처 없는 숫자 거부 | 지원 범위 검증 |
+| 예상 판매량·이익 | 설명만 담당 | ToolResult 원본 고정 | Simulation Engine 계산 |
+| 개선확률·예상 범위 | 설명만 담당 | 수치 일치 검증 | Monte Carlo 계산 |
+| 근거 품질 | 상태와 한계 설명 | 확률 오해 표현 차단 | `evidence_quality` 계산 |
+| 실행 판단 | 사용자 언어로 설명 | 엔진 판단과 일치 검증 | Decision Engine 판정 |
+| 실험 계획 | 사용자 의사 확인 | 기간·가격 출처 확인 | Feedback Store 보존 |
+| 실제 결과 평가 | 결과 해석 | 임의 보충값 차단 | Feedback Engine 계산 |
 
 ## 5. 전체 구조
 
@@ -66,8 +73,9 @@ Agent는 상담형 계산 인터페이스다. 수요·이익·탄력성·성공�
 flowchart LR
     U[사용자] --> UI[웹 채팅 UI]
     UI --> A[Agent Runtime]
-    A --> P[System Prompt와 대화 상태]
-    A --> R[Tool Router]
+    A --> I[LLM 의도·전략 구성]
+    I --> P[System Prompt와 구조화된 상태]
+    I --> R[Tool Router]
     R --> C[Capabilities]
     R --> D[Price·Discount Decision]
     R --> B[Bundle Simulation]
@@ -78,23 +86,29 @@ flowchart LR
     B --> E
     W --> E
     F --> L[실험 원장]
-    E --> A
-    L --> A
-    A --> O[판단·근거·다음 행동 설명]
+    E --> RP1[Response Policy: 핵심 사실 고정]
+    L --> RP1
+    RP1 --> X[LLM 설명 생성]
+    X --> RP2[Response Policy: 최종 검증]
+    RP2 --> O[구조화된 AgentResponse]
     O --> UI
 ```
 
 v1은 하나의 Agent와 명시적인 Tool Call 반복 구조로 구현한다. 해커톤 범위에서는 별도 Agent
 프레임워크보다 짧은 Python 런타임이 디버깅과 숫자 추적에 유리하다.
 
+Response Policy는 사후 문장 검사만 하는 모듈이 아니다. ToolResult에서 UI 핵심 사실을 먼저
+구조화해 고정하고, LLM에는 설명 영역만 맡긴다. 최종 검증이 실패하면 응답을 사용자에게 보내지
+않고 재작성하거나 구조화된 오류로 종료한다.
+
 ## 6. 사용자 의도와 도구 연결
 
 | 의도 | 예시 | 도구 | 상태 |
 |---|---|---|---|
-| 기능 조회 | “무슨 메뉴를 분석할 수 있어?” | `get_margincast_capabilities` | 준비됨 |
+| 기능 조회 | “무슨 메뉴를 분석할 수 있어?” | `get_margincast_capabilities` | 준비됨, `execution_defaults` 추가 필요 |
 | 가격·할인 비교 | “치킨마요를 500원 올리면?” | `compare_price_strategies` | 준비됨 |
 | 세트 분석 | “치킨마요 콜라 세트 어때?” | `simulate_bundle_strategy` | 준비됨, 범용 메뉴 스키마 보강 예정 |
-| 실제 날씨 반영 | “우리 매장 기준 다음 4일은?” | `compare_price_strategies_with_forecast` | HTTP 기능 준비됨, Agent 도구 등록 필요 |
+| 실제 날씨 반영 | “우리 매장 기준 다음 4일은?” | `compare_price_strategies_with_forecast` | 주소 방식 준비됨, 좌표·격자 계약 보강 필요 |
 | 실험 계획 저장 | “이 안으로 7일 실험할게” | `create_experiment_plan` | HTTP 기능 준비됨, Agent 도구 등록 필요 |
 | 대기 실험 조회 | “결과 입력할 실험 보여줘” | `list_pending_experiments` | HTTP 기능 준비됨, Agent 도구 등록 필요 |
 | 실제 결과 입력 | “실제로 95개 팔렸어” | `record_experiment_result` | HTTP 기능 준비됨, Agent 도구 등록 필요 |
@@ -103,18 +117,43 @@ v1은 하나의 Agent와 명시적인 Tool Call 반복 구조로 구현한다. �
 새 분석을 시작하거나 데이터·엔진 버전이 달라졌을 때 capabilities를 다시 조회한다. 같은 대화에서
 버전이 유지되면 매 메시지마다 반복 호출하지 않는다.
 
+현재 엔진 함수의 실행 기본값은 14일·10,000회·seed 42지만 capabilities 응답에는 아직
+`execution_defaults`가 없다. A단계에서 Tool Contract가 아래 구조를 반환하도록 보강한 뒤에만
+Agent가 `DEFAULT` 출처로 사용할 수 있다. 시스템 프롬프트나 Agent 코드에 이 숫자를 복제하지 않는다.
+
+```json
+{
+  "execution_defaults": {
+    "horizon_days": 14,
+    "simulations": 10000,
+    "seed": 42
+  }
+}
+```
+
 ## 7. 대화 상태
 
 Agent는 세션 동안 다음 값만 구조화해 보관한다.
 
 ```text
-capabilities_version
+static_capabilities
+  engine_version
+  data_version
+  execution_defaults
 data_provenance
 selected_menu_id
 baseline_price
 draft_scenarios
 analysis_horizon_days
 weather_mode
+store_location
+  source                 # current_location | store_search
+  latitude               # 지도 표시가 필요할 때만 세션에 보관
+  longitude              # 지도 표시가 필요할 때만 세션에 보관
+  kma_nx
+  kma_ny
+  resolved_at
+  expires_at
 last_tool_call
 last_decision_result
 selected_experiment_plan
@@ -123,6 +162,11 @@ pending_question
 
 대화 기록 전체를 계산 입력으로 사용하지 않는다. Tool Call 인자는 구조화된 상태에서 만들고,
 도구 응답 원본은 설명용 복사본과 분리해 보존한다.
+
+주소 검색 문자열은 좌표 변환 Tool Call에만 전달하고 결과가 확인되면 폐기한다. 이후 기상청 호출은
+세션의 `kma_nx`, `kma_ny`를 우선 사용한다. 위도·경도는 지도 표시나 위치 재검증에 필요할 때만
+세션 만료 시점까지 유지하며 감사 로그에는 저장하지 않는다. 현재 위치는 브라우저 권한을 받은
+경우에만 사용한다.
 
 ## 8. 기본 대화 흐름
 
@@ -137,8 +181,26 @@ pending_question
 7. 기대값, 80% 범위, 개선확률, 하방 위험과 다음 행동을 설명한다.
 8. 사용자가 실제로 시험하려 하면 예측 스냅샷을 실험 계획으로 저장한다.
 
-기간을 지정하지 않으면 14일, Monte Carlo는 10,000회, seed는 42를 기본값으로 사용하고 이를
-응답에 표시한다. 실제 단기예보는 제공 가능한 1~5일 안에서만 사용한다.
+사용자가 분석 실행값을 지정하지 않으면 `capabilities.execution_defaults`를 사용하고 각 값을
+`DEFAULT` 출처로 기록한다. capabilities에 기본값이 없으면 Agent가 숫자를 추측하지 않고 필요한
+값을 질문하거나 Tool Contract 오류로 처리한다. 실제 단기예보는 Tool Contract가 제공하는 기간
+범위 안에서만 사용한다.
+
+분석 기간과 실제 실험 기간은 별개다. 분석에 사용한 기본 `horizon_days`를 그대로 실험 권장
+기간으로 바꾸지 않는다.
+
+### `EXPERIMENT` 실행 설계
+
+Agent가 제안하는 가격·할인액·기간·대상 매장·대상 메뉴는 다음 출처 규칙을 지킨다.
+
+1. 사용자가 명시하고 엔진 검증을 통과한 값은 `USER`로 사용한다.
+2. 사용자가 지정하지 않은 값에 엔진의 구조화된 `next_step`이 있으면 `ENGINE`으로 사용한다.
+3. 실험 전용 기본값이 Tool Contract에 정의돼 있으면 `DEFAULT`로 사용하고 출처를 표시한다.
+4. 세 출처에 값이 없으면 구체적인 숫자를 만들지 않고 사용자에게 묻는다.
+
+따라서 단순히 Decision이 `EXPERIMENT`라는 이유만으로 “7일간 9,500원으로 운영하세요” 같은
+실험안을 만들 수 없다. 엔진의 입력 허용 범위는 추천값이 아니며, 예를 들어 1~180일 검증 범위를
+근거로 특정 실험 기간을 선택하지 않는다.
 
 ### 세트
 
@@ -160,6 +222,37 @@ pending_question
 4. 실험 전후로 함께 기록해야 할 판매량·원가·할인·날씨 항목을 알려준다.
 
 ## 9. 응답 계약
+
+Agent Runtime은 먼저 다음 구조의 `AgentResponse`를 만든다.
+
+```text
+recommendation_id
+facts
+  selected_scenario_id
+  execution_inputs
+    horizon_days: {value, source}
+    simulations: {value, source}
+    seed: {value, source}
+  expected_units
+  expected_contribution_profit
+  profit_delta
+  interval_80
+  success_probability
+  evidence_quality
+  engine_decision
+presentation
+  presented_decision
+  explanation
+  next_action
+notices
+policy_validation
+  status              # PASS | REJECTED
+  violations
+```
+
+UI는 `facts`의 핵심 수치와 Decision을 직접 표시한다. `presentation.explanation`에서 숫자를
+다시 추출해 카드나 차트를 만들지 않는다. `presented_decision`은 `engine_decision`과 같아야 하며,
+다르면 Response Policy가 응답을 거부한다.
 
 최종 응답은 가능한 경우 다음 순서를 사용한다.
 
@@ -218,6 +311,9 @@ pending_question
 - `menu_specific_causal_effect_validated=false`이면 특정 날씨가 판매를 증가 또는 감소시킨다고
   단정하지 않는다.
 - 주소 원문은 Tool Call 수행에만 사용하고 Agent 장기 메모리나 추천 로그에는 저장하지 않는다.
+- 주소 검색 또는 현재 위치를 좌표와 기상청 격자로 해석한 뒤 주소 검색 문자열을 폐기한다.
+- 같은 세션에서는 만료되지 않은 `kma_nx`, `kma_ny`를 재사용해 주소 검색을 반복하지 않는다.
+- 위도·경도와 격자 좌표의 보존 범위는 세션으로 제한하고 `expires_at` 이후 폐기한다.
 - 날씨 API 범위가 부족하면 과거 날씨로 조용히 채우지 않고 사용자에게 기간 조정을 안내한다.
 
 ## 12. 실험 피드백과 감사 추적
@@ -244,11 +340,16 @@ Agent 자체 감사 로그에는 다음 값만 추가한다.
 - 호출 도구 이름
 - 도구 입력의 민감값 제거본 또는 해시
 - 도구 결과 ID
-- 최종 설명에서 선택한 행동
+- 선택한 `scenario_id`
+- Decision Engine 원본인 `engine_decision`
+- 사용자에게 제시한 `presented_decision`
+- Response Policy 결과와 위반 코드
 - 사용자 선택과 연결된 `feedback_id`
 - 실제 결과 연결 상태(`not_planned`, `planned`, `completed`)
 
-API 키, 주소 원문과 전체 대화 원문은 감사 로그에서 제외한다.
+LLM 설명 전문, API 키, 주소 원문, 위도·경도와 전체 대화 원문은 감사 로그에서 제외한다.
+`engine_decision`과 `presented_decision`이 다르면 로그만 남기고 사용자에게 보내는 방식이 아니라,
+Response Policy가 해당 응답을 거부해야 한다.
 
 현재 계산 엔진에는 `feedback_id`와 `planned`/`completed` 상태가 구현돼 있다. 위 Agent 감사
 로그는 본체 구현 단계의 계약이며 아직 저장소나 런타임이 구현된 상태가 아니다. 따라서
@@ -285,6 +386,10 @@ API 키, 주소 원문과 전체 대화 원문은 감사 로그에서 제외한�
 프롬프트에는 가격탄력성이나 이익 계산 공식을 넣지 않는다. 공식이 프롬프트에 있으면 Agent가
 도구 대신 직접 계산할 가능성이 커진다.
 
+실행 기본값과 실험 기간·가격도 프롬프트에 상수로 넣지 않는다. 실행 기본값은
+`capabilities.execution_defaults`, 실험 숫자는 `USER`·`ENGINE`·실험 전용 `DEFAULT` 출처에서만
+가져온다.
+
 ## 15. 제안 코드 구조
 
 ```text
@@ -294,12 +399,14 @@ src/agent/
 ├── system_prompt.py      # 버전이 있는 시스템 프롬프트
 ├── tool_registry.py      # TOOL_SCHEMAS 등록과 execute_tool 연결
 ├── conversation_state.py # 세션 상태와 필수 입력 관리
-├── response_policy.py    # 결과 검증과 응답 계약
+├── response_policy.py    # ToolResult 고정, AgentResponse 구성과 최종 검증
 └── audit_log.py          # 민감값을 제외한 추천 감사 로그
 
 tests/agent/
+├── test_mock_runtime.py
 ├── test_tool_routing.py
 ├── test_response_policy.py
+├── test_provider_invariance.py
 ├── test_weather_claims.py
 ├── test_data_provenance.py
 └── fixtures/
@@ -310,15 +417,21 @@ tests/agent/
 
 ## 16. 구현 단계
 
+A단계를 확장 설계 단계로 사용하지 않는다. Mock Runtime 한 건을 시작하는 데 필요한 계약만
+보강하고 바로 B단계로 이동한다.
+
 | 단계 | 작업 | 완료 조건 |
 |---|---|---|
-| A | Agent 도구 계약 최종 보강 | 범용 세트, 날씨, 피드백 도구 스키마 확정 |
-| B | 최소 Agent Runtime | 자연어 질문 한 건이 Tool Call과 최종 설명으로 완료 |
-| C | 응답 정책 | 출처·범위·확률·근거 품질·다음 행동을 항상 표시 |
-| D | 오류·부족 데이터 흐름 | 미지원 메뉴가 데이터 확보 경로로 연결 |
-| E | 실험 피드백 연결 | 추천을 계획으로 저장하고 실제 결과 연결 가능 |
-| F | Agent 평가 | 필수 회귀 사례와 숫자 원본 보존 검사 통과 |
-| G | 웹 채팅 연결 | 기존 시뮬레이터와 같은 API·결과를 사용하는 대화 UI 완성 |
+| A | Tool 계약 최소 보강 | `execution_defaults`, 좌표·격자 날씨 입력, Feedback, 범용 Bundle 입력 계약 확정 |
+| B | Mock LLM Agent Runtime | 가격 질문 한 건이 Mock Provider → Tool Call → ToolResult까지 완료 |
+| C | ToolResult → AgentResponse 정책 | 핵심 사실 고정, Decision 일치, 필수 고지 검증 후 PASS |
+| D | 오류·Missing Input | 출처 없는 숫자를 만들지 않고 질문 또는 구조화된 오류 반환 |
+| E | 실제 LLM Provider | Mock과 같은 Provider Interface로 실제 모델 한 개 연결 |
+| F | Feedback·Audit | 추천 ID, 구조화된 판단, 실험 계획과 실제 결과 연결 상태 보존 |
+| G | Web | UI가 설명문이 아니라 `AgentResponse.facts`로 핵심 수치와 Decision 표시 |
+
+첫 세로 흐름은 `가격 질문 → Mock LLM → 가격 도구 → Response Policy → AgentResponse` 하나로
+제한한다. 이 흐름이 통과한 뒤 할인·날씨·세트·피드백을 같은 계약에 연결한다.
 
 ## 17. 평가 기준
 
@@ -334,6 +447,14 @@ tests/agent/
 - 최종 답변의 모든 수치가 도구 결과와 일치하는가
 - 백분위 범위와 개선확률을 서로 바꾸지 않는가
 - Agent가 누락된 수치를 생성하지 않는가
+- UI 핵심 값이 LLM 설명문이 아니라 `AgentResponse.facts`에서 렌더링되는가
+
+### Response Policy
+
+- `engine_decision`과 `presented_decision`이 다르면 응답을 거부하는가
+- 합성 데이터·미보정 근거 품질·날씨 인과 한계 고지가 누락되면 응답을 거부하는가
+- 출처 없는 실험 기간·가격·비율이 있으면 Missing Input으로 전환하는가
+- 동일한 ToolResult를 서로 다른 Provider에 넣어도 `facts`와 Decision이 완전히 같은가
 
 ### 해석 안전성
 
@@ -362,6 +483,8 @@ tests/agent/
 - 미지원 메뉴가 추가 데이터 확보 경로로 연결된다.
 - 추천 전략을 실험 계획으로 저장하고 실제 결과를 연결할 수 있다.
 - Agent 회귀 평가를 반복 실행할 수 있다.
+- 동일한 ToolResult에서는 LLM 모델이 달라도 UI 핵심 수치와 Decision이 동일하다.
+- `engine_decision`과 `presented_decision`이 다른 응답은 사용자에게 노출되지 않는다.
 - 기존 계산 엔진 테스트가 모두 유지된다.
 
 ## 19. 구현 전에 사용자가 결정할 항목

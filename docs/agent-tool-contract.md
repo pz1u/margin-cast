@@ -11,6 +11,26 @@
 시작할 때 이 도구를 먼저 호출해야 한다. v2에서 가격 실험 근거가 있는 메뉴는
 `M01`, `M02`, `M03`이다.
 
+#### A단계 최소 보강
+
+현재 엔진 함수에는 14일·10,000회·seed 42 기본값이 정의돼 있지만 capabilities 응답에는
+아직 노출되지 않는다. Agent 구현 전에 Tool Contract에 다음 필드를 추가한다.
+
+```json
+{
+  "execution_defaults": {
+    "horizon_days": 14,
+    "simulations": 10000,
+    "seed": 42
+  }
+}
+```
+
+이 값은 엔진의 단일 상수에서 함수 기본값, 도구 설명과 capabilities 응답을 함께 생성해야 한다.
+Agent와 시스템 프롬프트는 값을 복제하지 않는다. 도구 호출 인자에 사용자가 지정하지 않은 값이
+있으면 Agent의 `StaticCapabilities.execution_defaults`가 이 응답을 `DEFAULT` 출처로 채우고
+사용 사실을 알린다.
+
 ### `compare_price_strategies`
 
 가격·할인 대안을 현재 가격과 비교한다. 핵심 출력은 다음과 같다.
@@ -43,6 +63,19 @@
 
 이 비율은 POS에서 직접 식별할 수 없으므로 에이전트가 확정값처럼 만들면 안 된다. 사용자 가정
 또는 실제 실험으로 얻은 값을 넣고, 근거가 가정뿐이면 Decision Engine은 `EXPERIMENT`로 제한한다.
+
+### `compare_price_strategies_with_forecast`
+
+현재 HTTP 서비스는 주소를 받아 카카오 좌표 변환을 수행한다. Agent용 계약에서는 주소 검색과
+예보 조회를 분리하거나, 같은 도구가 다음 위치 입력 중 정확히 하나를 받도록 보강한다.
+
+- 주소 검색 문자열
+- WGS84 위도·경도
+- 기상청 `nx`, `ny`
+
+주소 검색 문자열은 좌표와 격자를 확인한 뒤 폐기한다. Agent 세션은 `source`, `kma_nx`,
+`kma_ny`, `resolved_at`, `expires_at`을 보관하고, 지도 표시가 필요한 경우에만 위도·경도를
+세션에 유지한다. 감사 로그에는 주소와 정확한 좌표를 남기지 않는다.
 
 ## 도구 등록에 사용할 코드
 
@@ -107,7 +140,8 @@ Decision Engine의 데이터 출처, 근거 품질 산식과 검증 계획은
 4. 함수 호출을 `execute_tool`로 전달
 5. 도구 결과를 사용자가 이해할 수 있는 경영 언어로 설명
 
-현재 저장소는 3번을 시작하기 직전 상태다.
+Agent 본체 구현 전에 이 문서의 A단계 최소 보강만 먼저 완료한다. 그 뒤 가격 질문 한 건의
+Mock LLM 세로 흐름부터 만들며, 추가 설계를 위해 A단계를 확대하지 않는다.
 
 Agent 본체의 필수 회귀 사례는 [MarginCast Agent MVP 평가 시나리오](agent-evaluation.md)에
 정리했다.
