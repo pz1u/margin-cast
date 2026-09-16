@@ -87,10 +87,16 @@
       "p95": 209609.79398001413
     },
     "success_probability": 1.0,
-    "confidence": {
+    "evidence_quality": {
+      "version": "heuristic-v1",
       "score": 35.0,
       "label": "LOW",
       "is_probability": false,
+      "validation": {
+        "status": "PENDING_REAL_STORE_FEEDBACK",
+        "empirically_calibrated": false,
+        "statement": "실제 매장 피드백이 없어 점수와 예측 정확도의 관계는 아직 검증되지 않았다."
+      },
       "reason": "신규 수요와 기존 주문 전환·잠식 비율이 관측치가 아닌 시나리오 가정이다."
     },
     "ground_truth_used": false,

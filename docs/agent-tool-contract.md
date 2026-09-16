@@ -7,7 +7,7 @@
 
 ### `get_margincast_capabilities`
 
-계산 가능한 메뉴와 입력 한도, 데이터 범위, 해석 제약을 반환한다. 에이전트는 새로운 분석을
+계산 가능한 메뉴와 입력 한도, 데이터 출처, 데이터 범위, 해석 제약을 반환한다. 에이전트는 새로운 분석을
 시작할 때 이 도구를 먼저 호출해야 한다. v2에서 가격 실험 근거가 있는 메뉴는
 `M01`, `M02`, `M03`이다.
 
@@ -20,12 +20,16 @@
 - 현재 가격 대비 기대 기여이익 차이
 - 현재 가격보다 기여이익이 높을 확률
 - 10백분위 손실 여부인 `downside_risk`
-- 성공확률과 분리된 근거 품질 `confidence`
+- 성공확률과 분리된 미보정 근거 품질 `evidence_quality`
 - `RECOMMEND`·`EXPERIMENT`·`HOLD` 실행 판단
 - 기대 기여이익이 가장 높은 대안
 
 `highest_expected_profit`은 기대값만 본 별도 지표다. 최종 순서는 기대이익·개선확률·80%
-하한·신뢰도를 함께 반영한 `decision_ranking`을 사용한다.
+하한·근거 품질을 함께 반영한 `decision_ranking`을 사용한다.
+
+모든 계산 결과는 `data_provenance`로 합성/실제 데이터 여부와 데이터 버전을 밝힌다. 현재는
+`SYNTHETIC_DATA_PROTOTYPE`이며 실제 매장 성과를 보증하지 않는다. `evidence_quality`는
+`heuristic-v1`이고 실제 매장 결과와의 관계가 아직 검증되지 않은 상태다.
 
 ### `simulate_bundle_strategy`
 
@@ -82,10 +86,17 @@
 
 1. 계산값을 LLM이 다시 만들거나 임의로 수정하지 않는다.
 2. `ground_truth_used`가 `false`인지 확인한다.
-3. 기대값과 함께 범위·성공확률·하방 위험·신뢰도·실행 판단을 보여준다.
+3. 기대값과 함께 범위·성공확률·하방 위험·근거 품질·실행 판단을 보여준다.
 4. 미래 날씨 예보가 없다는 가정을 알린다.
 5. 지원되지 않는 메뉴에는 가격탄력성을 추측하지 않는다.
 6. 세트 전략의 신규 수요와 잠식은 사용자 가정임을 분명히 표시한다.
+7. `data_provenance.warning`을 생략하지 않고 합성 데이터 기반 프로토타입임을 알린다.
+8. `evidence_quality.validation.empirically_calibrated`가 `false`이면 미검증 휴리스틱이라고 설명한다.
+9. 날씨 예보 사용을 메뉴별 날씨 인과효과로 확대 해석하지 않는다.
+10. 미지원 메뉴에는 오류 세부정보의 `next_step`을 사용해 데이터 확보 경로를 안내한다.
+
+Decision Engine의 데이터 출처, 근거 품질 산식과 검증 계획은
+[Decision Engine 데이터 출처와 판단 방법](decision-methodology.md)을 기준으로 한다.
 
 ## 사용자에게 남은 구현
 
@@ -96,3 +107,6 @@
 5. 도구 결과를 사용자가 이해할 수 있는 경영 언어로 설명
 
 현재 저장소는 3번을 시작하기 직전 상태다.
+
+Agent 본체의 필수 회귀 사례는 [MarginCast Agent MVP 평가 시나리오](agent-evaluation.md)에
+정리했다.

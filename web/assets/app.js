@@ -49,9 +49,11 @@ function setServiceStatus(online, message) {
 
 function updateDataStrip(capabilities) {
   const data = capabilities.data;
+  const provenance = capabilities.data_provenance;
   byId("data-days").textContent = `${data.end_day_index - data.start_day_index + 1}일`;
   byId("data-rows").textContent = number.format(data.rows);
   byId("menu-count").textContent = `${capabilities.supported_menus.length}개`;
+  byId("data-provenance").textContent = provenance.warning;
 }
 
 function currentMenu() {
@@ -136,6 +138,27 @@ function prepareFeedback(payload, strategy) {
       units: predictionInterval(strategy.units),
       contribution_profit: predictionInterval(strategy.contribution_profit),
       profit_delta: predictionInterval(strategy.profit_delta),
+    },
+    decision_context: {
+      engine_version: payload.engine_version,
+      operation: payload.weather ? "compare_price_strategies_with_forecast" : "compare_price_strategies",
+      data_provenance: {
+        source_type: payload.data_provenance.source_type,
+        dataset_version: payload.data_provenance.dataset_version,
+        uses_actual_store_data: payload.data_provenance.uses_actual_store_data,
+      },
+      weather_context: {
+        source: payload.weather_context.source,
+        menu_specific_causal_effect_validated:
+          payload.weather_context.menu_specific_causal_effect_validated,
+      },
+      evidence_quality: {
+        version: strategy.evidence_quality.version,
+        label: strategy.evidence_quality.label,
+        score: strategy.evidence_quality.score,
+        validation_status: strategy.evidence_quality.validation.status,
+      },
+      decision_action: payload.recommended_action.action,
     },
   };
 
@@ -244,17 +267,17 @@ function renderPriceResult(payload) {
   byId("price-profit-delta").textContent = won(recommended.profit_delta.mean, true);
   byId("price-profit-range").textContent = `${won(recommended.profit_delta.p10, true)} — ${won(recommended.profit_delta.p90, true)}`;
   byId("price-success").textContent = percent(recommended.success_probability);
-  byId("price-confidence").textContent = recommended.confidence?.label || "—";
-  const confidence = recommended.confidence;
-  if (confidence?.evidence) {
-    const evidence = confidence.evidence;
+  byId("price-confidence").textContent = recommended.evidence_quality?.label || "—";
+  const evidenceQuality = recommended.evidence_quality;
+  if (evidenceQuality?.evidence) {
+    const evidence = evidenceQuality.evidence;
     const promotion = evidence.uses_promotion_effect
       ? `, 할인 실험 ${evidence.promotion_events}회`
       : "";
     byId("price-evidence").textContent =
       `가격 실험 ${evidence.price_events}회${promotion}, 관측 결제가격 ` +
       `${won(evidence.observed_paid_price_range[0])}—${won(evidence.observed_paid_price_range[1])}. ` +
-      confidence.interpretation;
+      `${evidenceQuality.interpretation} ${evidenceQuality.validation.statement}`;
   } else {
     byId("price-evidence").textContent = payload.interpretation_notes.join(" ");
   }
@@ -272,8 +295,9 @@ function renderBundleResult(payload) {
   byId("bundle-profit-delta").textContent = won(strategy.profit_delta.mean, true);
   byId("bundle-profit-range").textContent = `${won(strategy.profit_delta.p10, true)} — ${won(strategy.profit_delta.p90, true)}`;
   byId("bundle-success").textContent = percent(strategy.success_probability);
-  byId("bundle-confidence").textContent = strategy.confidence.label;
-  byId("bundle-evidence").textContent = strategy.confidence.reason;
+  byId("bundle-confidence").textContent = strategy.evidence_quality.label;
+  byId("bundle-evidence").textContent =
+    `${strategy.evidence_quality.reason} ${strategy.evidence_quality.validation.statement}`;
 
   const orderLabels = {
     converted_main_without_drink: "단품 고객 전환",
@@ -448,6 +472,7 @@ byId("feedback-plan-form").addEventListener("submit", async (event) => {
         end_date: byId("feedback-end").value,
         scenario: state.latestPriceFeedback.scenario,
         prediction: state.latestPriceFeedback.prediction,
+        decision_context: state.latestPriceFeedback.decision_context,
       }),
     });
     saved = true;

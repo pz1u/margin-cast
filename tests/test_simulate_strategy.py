@@ -61,7 +61,10 @@ class StrategySimulationTests(unittest.TestCase):
                 scenario["contribution_profit"]["p10"],
                 scenario["contribution_profit"]["p90"],
             )
-            self.assertFalse(scenario["confidence"]["is_probability"])
+            quality = scenario["evidence_quality"]
+            self.assertFalse(quality["is_probability"])
+            self.assertEqual(quality["version"], "heuristic-v1")
+            self.assertFalse(quality["validation"]["empirically_calibrated"])
 
     def test_invalid_scenario_is_rejected(self):
         with self.assertRaises(ValueError):

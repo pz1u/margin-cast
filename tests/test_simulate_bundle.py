@@ -43,7 +43,11 @@ class BundleSimulationTests(unittest.TestCase):
             self.evidence, DEFAULT_BUNDLE_SCENARIO, simulations=500, seed=7
         )
         self.assertEqual(first, second)
-        self.assertEqual(first["confidence"]["label"], "LOW")
+        self.assertEqual(first["evidence_quality"]["label"], "LOW")
+        self.assertEqual(first["evidence_quality"]["version"], "heuristic-v1")
+        self.assertFalse(
+            first["evidence_quality"]["validation"]["empirically_calibrated"]
+        )
         self.assertFalse(first["ground_truth_used"])
         self.assertEqual(
             set(first["orders"]),

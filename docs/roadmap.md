@@ -44,7 +44,7 @@ Phase 3~4 결과는 v2 데이터로 다시 실행해 갱신했고 이후 단계�
 | 3 | EDA·Feature Dataset | 0판매 셀 포함, 개입별 관측값과 누수 방지 계약 확인 |
 | 4 | Baseline·탄력성·할인 | 120/30/30 시간순 평가, Ground Truth 대비 오차와 불확실성 제시 |
 | 5 | 기상청 API | 미래 날짜별 날씨 예보를 모델 입력으로 변환 |
-| 6~7 | Price·Monte Carlo·Confidence | 기대값, 범위, 성공확률, 신뢰도를 분리해 반환 |
+| 6~7 | Price·Monte Carlo·Evidence Quality | 기대값, 범위, 성공확률, 근거 품질을 분리해 반환 |
 | 8 | 할인·세트 | 할인 효과와 세트 신규 수요·잠식을 구분 |
 | 9 | Decision Engine | 기대이익·성공확률·하방 위험·근거 수준으로 비교 |
 | 10 | Agent | 계산값을 만들지 않고 도구 호출과 설명만 담당 |

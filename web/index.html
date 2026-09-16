@@ -27,13 +27,14 @@
       <h1 id="page-title">바꾸기 전에<br>이익의 범위를 봅니다.</h1>
       <p class="intro-copy">
         가격, 할인, 세트 구성을 실제 매장에 적용하기 전에 판매량과 기여이익의 변화,
-        개선확률과 근거 신뢰도를 함께 비교하세요.
+        개선확률과 근거 품질을 함께 비교하세요.
       </p>
       <dl class="data-strip" aria-label="현재 분석 데이터">
         <div><dt>분석 기간</dt><dd id="data-days">—</dd></div>
         <div><dt>분석 셀</dt><dd id="data-rows">—</dd></div>
         <div><dt>지원 메뉴</dt><dd id="menu-count">—</dd></div>
       </dl>
+      <p class="data-provenance" id="data-provenance">현재 분석 데이터 출처를 확인하는 중입니다.</p>
     </section>
 
     <nav class="mode-tabs" aria-label="시뮬레이션 종류" role="tablist">
@@ -101,7 +102,7 @@
             <div class="metric-primary"><span>기대 기여이익 변화</span><strong id="price-profit-delta">—</strong></div>
             <div><span>80% 예상 범위</span><strong id="price-profit-range">—</strong></div>
             <div><span>개선확률</span><strong id="price-success">—</strong></div>
-            <div><span>근거 신뢰도</span><strong id="price-confidence">—</strong></div>
+            <div><span>근거 품질</span><strong id="price-confidence">—</strong></div>
           </div>
           <div class="comparison-block">
             <div class="result-subheading"><h3>전략별 기여이익</h3><span>막대는 기대값 기준</span></div>
@@ -129,7 +130,7 @@
           <label>신규 수요율<input id="incremental-rate" type="number" min="0" max="100" step="1" value="10"><small>%</small></label>
           <label>다른 메뉴 잠식률<input id="cannibalization-rate" type="number" min="0" max="100" step="1" value="2"><small>%</small></label>
         </div>
-        <p class="assumption-warning">네 비율은 아직 관측값이 아닌 실험 가정입니다. 결과 신뢰도는 보수적으로 제한됩니다.</p>
+        <p class="assumption-warning">네 비율은 아직 관측값이 아닌 실험 가정입니다. 근거 품질은 보수적으로 제한됩니다.</p>
         <button class="primary-button" id="bundle-submit" type="submit"><span>세트 효과 계산하기</span><span aria-hidden="true">→</span></button>
         <p class="form-message" id="bundle-message" role="alert"></p>
       </form>
@@ -152,7 +153,7 @@
             <div class="metric-primary"><span>기대 기여이익 변화</span><strong id="bundle-profit-delta">—</strong></div>
             <div><span>80% 예상 범위</span><strong id="bundle-profit-range">—</strong></div>
             <div><span>개선확률</span><strong id="bundle-success">—</strong></div>
-            <div><span>근거 신뢰도</span><strong id="bundle-confidence">—</strong></div>
+            <div><span>근거 품질</span><strong id="bundle-confidence">—</strong></div>
           </div>
           <div class="flow-summary" id="bundle-orders"></div>
           <aside class="evidence-note"><span>해석 기준</span><p id="bundle-evidence"></p></aside>

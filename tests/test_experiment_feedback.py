@@ -29,6 +29,26 @@ def feedback_payload(
             "contribution_profit": {"mean": 620_000, "p10": 560_000, "p90": 680_000},
             "profit_delta": {"mean": 50_000, "p10": -10_000, "p90": 110_000},
         },
+        "decision_context": {
+            "engine_version": "0.5.0",
+            "operation": "compare_price_strategies",
+            "data_provenance": {
+                "source_type": "synthetic_pos",
+                "dataset_version": "synthetic-pos-v2",
+                "uses_actual_store_data": False,
+            },
+            "weather_context": {
+                "source": "observed_history",
+                "menu_specific_causal_effect_validated": False,
+            },
+            "evidence_quality": {
+                "version": "heuristic-v1",
+                "label": "MEDIUM",
+                "score": 70.0,
+                "validation_status": "PENDING_REAL_STORE_FEEDBACK",
+            },
+            "decision_action": "EXPERIMENT",
+        },
         "actual": {
             "units": actual_units,
             "contribution_profit": actual_profit,
@@ -63,6 +83,9 @@ class ExperimentFeedbackTests(unittest.TestCase):
         self.assertTrue(record["evaluation"]["units"]["within_80_interval"])
         self.assertEqual(record["evaluation"]["profit_delta"]["actual"], 40_000.0)
         self.assertTrue(record["evaluation"]["profit_delta"]["direction_correct"])
+        self.assertEqual(
+            record["decision_context"]["evidence_quality"]["version"], "heuristic-v1"
+        )
 
     def test_period_must_match_prediction_horizon(self):
         payload = feedback_payload()
@@ -140,6 +163,10 @@ class ExperimentFeedbackTests(unittest.TestCase):
         )
         self.assertEqual(summary["calibration"]["units"]["p80_coverage"], 0.5)
         self.assertEqual(summary["calibration"]["profit_delta"]["direction_accuracy"], 0.5)
+        quality = summary["evidence_quality_calibration"][0]
+        self.assertEqual(quality["version"], "heuristic-v1")
+        self.assertEqual(quality["label"], "MEDIUM")
+        self.assertEqual(quality["record_count"], 2)
 
     def test_corrupt_store_has_stable_error(self):
         self.path.write_text("{", encoding="utf-8")

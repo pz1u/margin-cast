@@ -31,7 +31,7 @@ TOOL_SCHEMAS = [
         "name": "compare_price_strategies",
         "description": (
             "한 메뉴의 가격 또는 할인 대안을 현재 가격과 Monte Carlo로 비교한다. "
-            "기대 판매량, 기대 기여이익, 80% 범위, 성공확률, 신뢰도와 실행 판단을 반환한다."
+            "기대 판매량, 기대 기여이익, 80% 범위, 성공확률, 근거 품질과 실행 판단을 반환한다."
         ),
         "strict": True,
         "parameters": {

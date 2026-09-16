@@ -55,7 +55,7 @@
         "p95": 0.0
       },
       "success_probability": null,
-      "confidence": null
+      "evidence_quality": null
     },
     {
       "name": "1,000원 할인",
@@ -96,10 +96,16 @@
         "p95": 258123.90288340888
       },
       "success_probability": 0.3324,
-      "confidence": {
+      "evidence_quality": {
+        "version": "heuristic-v1",
         "score": 73.6,
         "label": "MEDIUM",
         "is_probability": false,
+        "validation": {
+          "status": "PENDING_REAL_STORE_FEEDBACK",
+          "empirically_calibrated": false,
+          "statement": "실제 매장 피드백이 없어 점수와 예측 정확도의 관계는 아직 검증되지 않았다."
+        },
         "components": {
           "experiment_evidence": 30.0,
           "estimation_precision": 18.6,
@@ -116,7 +122,7 @@
           "scenario_paid_price": 8000,
           "uses_promotion_effect": true
         },
-        "interpretation": "모델 근거의 품질을 나타내는 휴리스틱 점수이며 전략의 성공확률이 아니다."
+        "interpretation": "모델 근거의 품질을 나타내는 미보정 휴리스틱 점수이며 전략의 성공확률이 아니다."
       }
     },
     {
@@ -158,10 +164,16 @@
         "p95": 363036.0454163439
       },
       "success_probability": 0.8635,
-      "confidence": {
+      "evidence_quality": {
+        "version": "heuristic-v1",
         "score": 75.0,
         "label": "MEDIUM",
         "is_probability": false,
+        "validation": {
+          "status": "PENDING_REAL_STORE_FEEDBACK",
+          "empirically_calibrated": false,
+          "statement": "실제 매장 피드백이 없어 점수와 예측 정확도의 관계는 아직 검증되지 않았다."
+        },
         "components": {
           "experiment_evidence": 30.0,
           "estimation_precision": 20.0,
@@ -178,7 +190,7 @@
           "scenario_paid_price": 9500,
           "uses_promotion_effect": false
         },
-        "interpretation": "모델 근거의 품질을 나타내는 휴리스틱 점수이며 전략의 성공확률이 아니다."
+        "interpretation": "모델 근거의 품질을 나타내는 미보정 휴리스틱 점수이며 전략의 성공확률이 아니다."
       }
     },
     {
@@ -220,10 +232,16 @@
         "p95": 542749.837476035
       },
       "success_probability": 0.9545,
-      "confidence": {
+      "evidence_quality": {
+        "version": "heuristic-v1",
         "score": 75.0,
         "label": "MEDIUM",
         "is_probability": false,
+        "validation": {
+          "status": "PENDING_REAL_STORE_FEEDBACK",
+          "empirically_calibrated": false,
+          "statement": "실제 매장 피드백이 없어 점수와 예측 정확도의 관계는 아직 검증되지 않았다."
+        },
         "components": {
           "experiment_evidence": 30.0,
           "estimation_precision": 20.0,
@@ -240,7 +258,7 @@
           "scenario_paid_price": 10000,
           "uses_promotion_effect": false
         },
-        "interpretation": "모델 근거의 품질을 나타내는 휴리스틱 점수이며 전략의 성공확률이 아니다."
+        "interpretation": "모델 근거의 품질을 나타내는 미보정 휴리스틱 점수이며 전략의 성공확률이 아니다."
       }
     }
   ],

@@ -103,6 +103,15 @@ h1 { margin: 0; max-width: 760px; font-size: clamp(42px, 6vw, 78px); line-height
 .data-strip div:last-child { border-right: 0; }
 .data-strip dt { color: var(--muted); font-size: 13px; }
 .data-strip dd { margin: 0; font-weight: 720; font-variant-numeric: tabular-nums; }
+.data-provenance {
+  grid-column: 1 / -1;
+  margin: 18px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--rust);
+  color: #6e4a3d;
+  background: #f7e7df;
+  font-size: 12px;
+}
 
 .mode-tabs { display: flex; margin-top: 64px; border-bottom: 1px solid var(--ink); }
 .mode-tab { padding: 13px 24px; border: 0; color: var(--muted); background: transparent; font-weight: 700; }

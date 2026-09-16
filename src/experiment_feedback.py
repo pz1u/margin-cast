@@ -12,6 +12,7 @@ from uuid import uuid4
 
 BASELINE_METHODS = {"matched_period", "parallel_control"}
 INTERVAL_FIELDS = {"mean", "p10", "p90"}
+DECISION_ACTIONS = {"RECOMMEND", "EXPERIMENT", "HOLD"}
 
 
 class ExperimentFeedbackError(ValueError):
@@ -73,6 +74,98 @@ def _normalize_interval(value, label, *, nonnegative=False):
     return normalized
 
 
+def _required_string(value, label, maximum=80):
+    if not isinstance(value, str) or not 1 <= len(value.strip()) <= maximum:
+        raise ExperimentFeedbackError(
+            "INVALID_FEEDBACK", f"{label}은 1~{maximum}자의 문자열이어야 합니다."
+        )
+    return value.strip()
+
+
+def _normalize_decision_context(value):
+    fields = {
+        "engine_version",
+        "operation",
+        "data_provenance",
+        "weather_context",
+        "evidence_quality",
+        "decision_action",
+    }
+    _require_exact_fields(value, fields, "decision_context")
+
+    provenance_fields = {"source_type", "dataset_version", "uses_actual_store_data"}
+    provenance = value["data_provenance"]
+    _require_exact_fields(provenance, provenance_fields, "decision_context.data_provenance")
+    if not isinstance(provenance["uses_actual_store_data"], bool):
+        raise ExperimentFeedbackError(
+            "INVALID_FEEDBACK",
+            "decision_context.data_provenance.uses_actual_store_data는 boolean이어야 합니다.",
+        )
+
+    weather_fields = {"source", "menu_specific_causal_effect_validated"}
+    weather = value["weather_context"]
+    _require_exact_fields(weather, weather_fields, "decision_context.weather_context")
+    if not isinstance(weather["menu_specific_causal_effect_validated"], bool):
+        raise ExperimentFeedbackError(
+            "INVALID_FEEDBACK",
+            "decision_context.weather_context.menu_specific_causal_effect_validated는 boolean이어야 합니다.",
+        )
+
+    quality_fields = {"version", "label", "score", "validation_status"}
+    quality = value["evidence_quality"]
+    _require_exact_fields(quality, quality_fields, "decision_context.evidence_quality")
+    if quality["label"] not in {"LOW", "MEDIUM", "HIGH"}:
+        raise ExperimentFeedbackError(
+            "INVALID_FEEDBACK", "decision_context.evidence_quality.label을 확인하세요."
+        )
+    score = _finite_number(quality["score"], "decision_context.evidence_quality.score")
+    if not 0 <= score <= 100:
+        raise ExperimentFeedbackError(
+            "INVALID_FEEDBACK", "decision_context.evidence_quality.score는 0~100이어야 합니다."
+        )
+    if value["decision_action"] not in DECISION_ACTIONS:
+        raise ExperimentFeedbackError(
+            "INVALID_FEEDBACK", "decision_context.decision_action을 확인하세요."
+        )
+
+    return {
+        "engine_version": _required_string(value["engine_version"], "decision_context.engine_version", 30),
+        "operation": _required_string(value["operation"], "decision_context.operation", 60),
+        "data_provenance": {
+            "source_type": _required_string(
+                provenance["source_type"], "decision_context.data_provenance.source_type", 40
+            ),
+            "dataset_version": _required_string(
+                provenance["dataset_version"],
+                "decision_context.data_provenance.dataset_version",
+                60,
+            ),
+            "uses_actual_store_data": provenance["uses_actual_store_data"],
+        },
+        "weather_context": {
+            "source": _required_string(
+                weather["source"], "decision_context.weather_context.source", 40
+            ),
+            "menu_specific_causal_effect_validated": weather[
+                "menu_specific_causal_effect_validated"
+            ],
+        },
+        "evidence_quality": {
+            "version": _required_string(
+                quality["version"], "decision_context.evidence_quality.version", 40
+            ),
+            "label": quality["label"],
+            "score": score,
+            "validation_status": _required_string(
+                quality["validation_status"],
+                "decision_context.evidence_quality.validation_status",
+                60,
+            ),
+        },
+        "decision_action": value["decision_action"],
+    }
+
+
 def normalize_feedback(value):
     """저장 전에 실험 기간·시나리오·예측·실제 결과의 계약을 검증한다."""
     expected = {
@@ -83,6 +176,7 @@ def normalize_feedback(value):
         "baseline_method",
         "scenario",
         "prediction",
+        "decision_context",
         "actual",
     }
     _require_exact_fields(value, expected, "feedback")
@@ -175,6 +269,7 @@ def normalize_feedback(value):
             ),
             "profit_delta": _normalize_interval(prediction["profit_delta"], "prediction.profit_delta"),
         },
+        "decision_context": _normalize_decision_context(value["decision_context"]),
         "actual": {
             "units": actual_units,
             "contribution_profit": _finite_number(
@@ -197,6 +292,7 @@ def normalize_experiment_plan(value):
         "end_date",
         "scenario",
         "prediction",
+        "decision_context",
     }
     _require_exact_fields(value, expected, "plan")
     normalized = normalize_feedback(
@@ -254,7 +350,11 @@ def _mean(values):
 def summarize_feedback(records):
     """저장된 실험의 예측 오차와 80% 구간 보정 상태를 집계한다."""
     if not records:
-        return {"record_count": 0, "calibration": None}
+        return {
+            "record_count": 0,
+            "calibration": None,
+            "evidence_quality_calibration": [],
+        }
 
     calibration = {}
     for metric in ("units", "contribution_profit", "profit_delta"):
@@ -278,7 +378,37 @@ def summarize_feedback(records):
             )
         calibration[metric] = summary
 
-    return {"record_count": len(records), "calibration": calibration}
+    quality_groups = {}
+    for record in records:
+        quality = record.get("decision_context", {}).get("evidence_quality")
+        if not quality:
+            continue
+        key = (quality["version"], quality["label"])
+        quality_groups.setdefault(key, []).append(record["evaluation"]["profit_delta"])
+    quality_calibration = []
+    for (version, label), evaluations in sorted(quality_groups.items()):
+        quality_calibration.append(
+            {
+                "version": version,
+                "label": label,
+                "record_count": len(evaluations),
+                "profit_delta_mean_absolute_error": _mean(
+                    [row["absolute_error"] for row in evaluations]
+                ),
+                "profit_delta_p80_coverage": _mean(
+                    [float(row["within_80_interval"]) for row in evaluations]
+                ),
+                "profit_delta_direction_accuracy": _mean(
+                    [float(row["direction_correct"]) for row in evaluations]
+                ),
+            }
+        )
+
+    return {
+        "record_count": len(records),
+        "calibration": calibration,
+        "evidence_quality_calibration": quality_calibration,
+    }
 
 
 class ExperimentFeedbackStore:
@@ -398,6 +528,7 @@ class ExperimentFeedbackStore:
                     "end_date",
                     "scenario",
                     "prediction",
+                    "decision_context",
                 )
             }
             complete_value["baseline_method"] = baseline_method

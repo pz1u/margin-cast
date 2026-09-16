@@ -125,8 +125,11 @@ Copy-Item .env.example .env
 ## 가격·할인 시뮬레이션
 
 기준 수요 모델과 탄력성 추정치를 연결해 14일 전략별 판매량·기여이익 분포를 계산합니다.
-수요·탄력성·할인효과·원가 불확실성을 반영하고 80% 예상 범위, 개선확률, 근거 품질
-신뢰도(`HIGH`/`MEDIUM`/`LOW`)를 서로 분리해 반환합니다.
+수요·탄력성·할인효과·원가 불확실성을 반영하고 80% 예상 범위, 개선확률과 미보정
+근거 품질(`HIGH`/`MEDIUM`/`LOW`)을 서로 분리해 반환합니다. 현재 결과는 실제 POS가 아닌
+`synthetic-pos-v2` 기반 프로토타입이며, 근거 품질과 실제 정확도의 관계도 아직 검증되지
+않았습니다. 자세한 산식과 검증 계획은
+[Decision Engine 데이터 출처와 판단 방법](docs/decision-methodology.md)을 참고하세요.
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.simulate_strategy
@@ -136,7 +139,7 @@ Copy-Item .env.example .env
 [Monte Carlo 시뮬레이션 보고서](reports/simulation/README.md)에 저장됩니다.
 
 세트는 관측 장바구니 기회와 사용자가 입력하는 Take Rate·신규 수요율·잠식률을 분리해
-계산합니다. POS만으로 세 값이 식별되지 않으므로 기본 결과의 신뢰도는 `LOW`입니다.
+계산합니다. POS만으로 세 값이 식별되지 않으므로 기본 결과의 근거 품질은 `LOW`입니다.
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.simulate_bundle

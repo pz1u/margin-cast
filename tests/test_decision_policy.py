@@ -3,18 +3,22 @@ import unittest
 from src.decision_policy import assess_strategy, rank_strategies
 
 
-def strategy(name, mean, p10, probability, confidence):
+def strategy(name, mean, p10, probability, evidence_quality):
     return {
         "name": name,
         "is_reference": False,
         "profit_delta": {"mean": mean, "p10": p10},
         "success_probability": probability,
-        "confidence": {"label": confidence, "score": 70},
+        "evidence_quality": {
+            "label": evidence_quality,
+            "score": 70,
+            "version": "heuristic-v1",
+        },
     }
 
 
 class DecisionPolicyTests(unittest.TestCase):
-    def test_action_uses_probability_downside_and_confidence(self):
+    def test_action_uses_probability_downside_and_evidence_quality(self):
         recommend = assess_strategy(strategy("본 실행", 100000, 10000, 0.85, "MEDIUM"))
         experiment = assess_strategy(strategy("작은 실험", 150000, 20000, 0.95, "LOW"))
         hold = assess_strategy(strategy("보류", -10000, -50000, 0.4, "HIGH"))

@@ -1,6 +1,10 @@
-"""관측 근거·추정 정밀도·시나리오 범위·날씨 문맥으로 신뢰도를 산정한다."""
+"""관측 근거·추정 정밀도·시나리오 범위·날씨 문맥으로 근거 품질을 산정한다."""
 
 import numpy as np
+
+
+EVIDENCE_QUALITY_VERSION = "heuristic-v1"
+EVIDENCE_QUALITY_VALIDATION_STATUS = "PENDING_REAL_STORE_FEEDBACK"
 
 
 def _event_count(active):
@@ -16,8 +20,8 @@ def _precision_points(estimate, standard_error, maximum=30.0):
     return maximum * (1 - relative_error)
 
 
-def calculate_confidence(panel, elasticity_report, scenario, context_source):
-    """신뢰도는 개선확률과 별개인 근거 품질 점수이며 0~100 범위다."""
+def calculate_evidence_quality(panel, elasticity_report, scenario, context_source):
+    """근거 품질은 개선확률과 별개인 미보정 휴리스틱 점수이며 0~100 범위다."""
     menu_id = elasticity_report["menu_id"]
     train = panel[(panel["menu_id"] == menu_id) & (panel["split"] == "train")]
     daily = (
@@ -67,9 +71,17 @@ def calculate_confidence(panel, elasticity_report, scenario, context_source):
     score = round(evidence + precision + scenario_support + weather_context, 1)
     label = "HIGH" if score >= 80 else "MEDIUM" if score >= 50 else "LOW"
     return {
+        "version": EVIDENCE_QUALITY_VERSION,
         "score": score,
         "label": label,
         "is_probability": False,
+        "validation": {
+            "status": EVIDENCE_QUALITY_VALIDATION_STATUS,
+            "empirically_calibrated": False,
+            "statement": (
+                "실제 매장 피드백이 없어 점수와 예측 정확도의 관계는 아직 검증되지 않았다."
+            ),
+        },
         "components": {
             "experiment_evidence": round(evidence, 1),
             "estimation_precision": round(precision, 1),
@@ -84,6 +96,6 @@ def calculate_confidence(panel, elasticity_report, scenario, context_source):
             "uses_promotion_effect": bool(scenario["discount"] > 0),
         },
         "interpretation": (
-            "모델 근거의 품질을 나타내는 휴리스틱 점수이며 전략의 성공확률이 아니다."
+            "모델 근거의 품질을 나타내는 미보정 휴리스틱 점수이며 전략의 성공확률이 아니다."
         ),
     }
