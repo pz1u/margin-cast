@@ -161,6 +161,8 @@ AI 에이전트가 계산 결과를 직접 생성하지 않고 검증된 엔진�
 ```
 
 연동 규칙과 남은 작업은 [에이전트 도구 연동 계약](docs/agent-tool-contract.md)을 참고하세요.
+Agent 본체의 역할, 대화 흐름, 응답 계약과 구현 순서는
+[MarginCast Agent 본체 기획서](docs/agent-body-plan.md)에 정리했습니다.
 
 ## 실험 피드백
 
