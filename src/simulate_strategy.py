@@ -15,11 +15,13 @@ plt.rcParams["font.family"] = "Malgun Gothic"
 plt.rcParams["axes.unicode_minus"] = False
 
 try:
+    from .execution_defaults import DEFAULT_HORIZON_DAYS, DEFAULT_SEED, DEFAULT_SIMULATIONS
     from .evidence_quality import calculate_evidence_quality
     from .estimate_elasticity import estimate_price_elasticity
     from .generate_data import PAYMENT_RATE, PLATFORM_RATE
     from .train_demand_model import CATEGORICAL_FEATURES, NUMERIC_FEATURES, add_model_features, build_model
 except ImportError:
+    from execution_defaults import DEFAULT_HORIZON_DAYS, DEFAULT_SEED, DEFAULT_SIMULATIONS
     from evidence_quality import calculate_evidence_quality
     from estimate_elasticity import estimate_price_elasticity
     from generate_data import PAYMENT_RATE, PLATFORM_RATE
@@ -99,7 +101,9 @@ def _build_kma_reference(frame, panel, forecasts, menu_id, horizon_days):
     return pd.DataFrame(records).reset_index(drop=True)
 
 
-def build_reference_forecast(panel, menu_id="M01", horizon_days=14, forecasts=None):
+def build_reference_forecast(
+    panel, menu_id="M01", horizon_days=DEFAULT_HORIZON_DAYS, forecasts=None
+):
     frame = add_model_features(panel)
     train = frame[frame["split"] == "train"]
     model = build_model().fit(
@@ -145,8 +149,8 @@ def simulate_scenarios(
     elasticity_report,
     scenarios,
     baseline_price,
-    simulations=10_000,
-    seed=42,
+    simulations=DEFAULT_SIMULATIONS,
+    seed=DEFAULT_SEED,
     demand_log_sigma=0.08,
     cost_relative_std=0.05,
 ):
@@ -235,9 +239,9 @@ def run_simulation(
     output_dir,
     scenarios=None,
     menu_id="M01",
-    horizon_days=14,
-    simulations=10_000,
-    seed=42,
+    horizon_days=DEFAULT_HORIZON_DAYS,
+    simulations=DEFAULT_SIMULATIONS,
+    seed=DEFAULT_SEED,
     weather_forecast_path=None,
     demand_log_sigma=0.08,
     cost_relative_std=0.05,
@@ -384,9 +388,9 @@ def main():
     root = Path(__file__).resolve().parents[1]
     parser.add_argument("--panel", type=Path, default=root / "data" / "processed" / "demand_panel.csv")
     parser.add_argument("--output-dir", type=Path, default=root / "reports" / "simulation")
-    parser.add_argument("--simulations", type=int, default=10_000)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--horizon-days", type=int, default=14)
+    parser.add_argument("--simulations", type=int, default=DEFAULT_SIMULATIONS)
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument("--horizon-days", type=int, default=DEFAULT_HORIZON_DAYS)
     parser.add_argument("--weather-forecast", type=Path)
     parser.add_argument("--demand-log-sigma", type=float, default=0.08)
     parser.add_argument("--cost-relative-std", type=float, default=0.05)

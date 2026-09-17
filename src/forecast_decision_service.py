@@ -1,16 +1,26 @@
-"""매장 주소의 실제 단기예보를 가격 의사결정 계산에 연결한다."""
+"""주소·좌표·기상청 격자의 실제 단기예보를 가격 의사결정 계산에 연결한다."""
 
 from datetime import datetime
 from pathlib import Path
 
 from src.decision_service import MarginCastDecisionService
+from src.execution_defaults import (
+    DEFAULT_SEED,
+    DEFAULT_SIMULATIONS,
+    FORECAST_DEFAULT_HORIZON_DAYS,
+)
 from src.kakao_geocoding import (
     KakaoConfigurationError,
     KakaoGeocodingError,
     geocode_address,
 )
-from src.location_grid import KmaGridError, latlon_to_grid
-from src.weather_forecast import KmaApiError, KmaConfigurationError, fetch_village_forecast
+from src.location_grid import KmaGridError
+from src.weather_forecast import (
+    KmaApiError,
+    KmaConfigurationError,
+    fetch_village_forecast,
+    resolve_forecast_location,
+)
 
 
 class ForecastDecisionError(RuntimeError):
@@ -40,18 +50,66 @@ class ForecastDecisionService:
     def compare_price_strategies(
         self,
         *,
-        address,
+        location=None,
+        address=None,
         menu_id,
         scenarios,
-        horizon_days=4,
-        simulations=10_000,
-        seed=42,
+        horizon_days=FORECAST_DEFAULT_HORIZON_DAYS,
+        simulations=DEFAULT_SIMULATIONS,
+        seed=DEFAULT_SEED,
     ):
-        address = str(address or "").strip()
-        if not 1 <= len(address) <= 200:
+        if location is not None and address is not None:
             raise ForecastDecisionError(
-                "INVALID_ADDRESS", "매장 주소는 1~200자로 입력하세요."
+                "INVALID_LOCATION", "location과 address를 함께 입력할 수 없습니다."
             )
+        if address is not None:
+            location = {"address": address}
+        if not isinstance(location, dict):
+            raise ForecastDecisionError(
+                "INVALID_LOCATION", "location은 주소, WGS84 좌표 또는 KMA 격자 객체여야 합니다."
+            )
+
+        allowed_location_fields = {"address", "latitude", "longitude", "nx", "ny"}
+        unknown = sorted(set(location) - allowed_location_fields)
+        if unknown:
+            raise ForecastDecisionError(
+                "INVALID_LOCATION",
+                "location에 지원하지 않는 필드가 있습니다.",
+                {"unknown_fields": unknown},
+            )
+        has_address = "address" in location
+        has_wgs84 = "latitude" in location or "longitude" in location
+        has_grid = "nx" in location or "ny" in location
+        if sum((has_address, has_wgs84, has_grid)) != 1:
+            raise ForecastDecisionError(
+                "INVALID_LOCATION",
+                "주소, WGS84 위도·경도, KMA nx·ny 중 정확히 하나를 입력하세요.",
+            )
+        if has_address:
+            normalized_address = str(location.get("address") or "").strip()
+            if not 1 <= len(normalized_address) <= 200:
+                raise ForecastDecisionError(
+                    "INVALID_ADDRESS", "매장 주소는 1~200자로 입력하세요."
+                )
+            resolver_arguments = {"address": normalized_address}
+            location_source = "address"
+        elif has_wgs84:
+            if set(location) != {"latitude", "longitude"}:
+                raise ForecastDecisionError(
+                    "INVALID_LOCATION", "WGS84 위치에는 latitude와 longitude가 모두 필요합니다."
+                )
+            resolver_arguments = {
+                "latitude": location["latitude"],
+                "longitude": location["longitude"],
+            }
+            location_source = "wgs84"
+        else:
+            if set(location) != {"nx", "ny"}:
+                raise ForecastDecisionError(
+                    "INVALID_LOCATION", "KMA 격자 위치에는 nx와 ny가 모두 필요합니다."
+                )
+            resolver_arguments = {"nx": location["nx"], "ny": location["ny"]}
+            location_source = "kma_grid"
         if isinstance(horizon_days, bool) or not isinstance(horizon_days, int):
             raise ForecastDecisionError(
                 "INVALID_HORIZON", "실제 예보 비교 기간은 정수여야 합니다."
@@ -63,8 +121,11 @@ class ForecastDecisionService:
             )
 
         try:
-            location = self.geocoder(address, env_path=self.env_path)
-            nx, ny = latlon_to_grid(location["latitude"], location["longitude"])
+            nx, ny, _ = resolve_forecast_location(
+                **resolver_arguments,
+                env_path=self.env_path,
+                geocoder=self.geocoder,
+            )
             forecasts = self.forecast_fetcher(nx, ny, env_path=self.env_path)
         except (KakaoConfigurationError, KmaConfigurationError) as error:
             raise ForecastDecisionError(
@@ -94,8 +155,7 @@ class ForecastDecisionService:
         )
         result["weather"] = {
             "source": "kma_short_term_forecast",
-            "location_source": "kakao_address",
-            "address_name": location.get("address_name"),
+            "location_source": location_source,
             "nx": nx,
             "ny": ny,
             "forecast_rows": len(forecasts),

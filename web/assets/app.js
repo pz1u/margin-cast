@@ -301,7 +301,7 @@ function renderBundleResult(payload) {
     `${strategy.evidence_quality.reason} ${strategy.evidence_quality.validation.statement}`;
 
   const orderLabels = {
-    converted_main_without_drink: "단품 고객 전환",
+    converted_main_without_components: "단품 고객 전환",
     converted_existing_copurchase: "기존 동시구매 전환",
     incremental: "신규 주문",
     cannibalized_other_main: "다른 메뉴 잠식",
@@ -427,6 +427,8 @@ byId("bundle-form").addEventListener("submit", async (event) => {
     const payload = await requestJson("/api/strategies/bundle", {
       method: "POST",
       body: JSON.stringify({
+        main_menu_id: "M01",
+        component_menu_ids: ["M06"],
         scenario: {
           name: byId("bundle-name").value.trim(),
           bundle_price: Number(byId("bundle-price").value),

@@ -11,17 +11,14 @@
 시작할 때 이 도구를 먼저 호출해야 한다. v2에서 가격 실험 근거가 있는 메뉴는
 `M01`, `M02`, `M03`이다.
 
-#### A단계 최소 보강
-
-현재 엔진 함수에는 14일·10,000회·seed 42 기본값이 정의돼 있지만 capabilities 응답에는
-아직 노출되지 않는다. Agent 구현 전에 Tool Contract에 다음 필드를 추가한다.
+실행 기본값은 계산 엔진의 단일 정의에서 함수 기본값과 다음 응답을 함께 만든다.
 
 ```json
 {
   "execution_defaults": {
-    "horizon_days": 14,
-    "simulations": 10000,
-    "seed": 42
+    "compare_price_strategies": {"horizon_days": 14, "simulations": 10000, "seed": 42},
+    "compare_price_strategies_with_forecast": {"horizon_days": 4, "simulations": 10000, "seed": 42},
+    "simulate_bundle_strategy": {"horizon_days": 14, "simulations": 10000, "seed": 42}
   }
 }
 ```
@@ -54,11 +51,12 @@ Agent와 시스템 프롬프트는 값을 복제하지 않는다. 도구 호출 
 
 ### `simulate_bundle_strategy`
 
-치킨마요·콜라 세트 가격과 다음 네 비율을 명시적으로 받아 계산한다.
+`main_menu_id`, 한 개 이상의 `component_menu_ids`, 세트 가격과 다음 네 비율을 명시적으로 받아
+계산한다.
 
-- 콜라가 없던 치킨마요 주문의 `take_rate`
-- 기존 치킨마요+콜라 주문의 `copurchase_take_rate`
-- 기존 치킨마요 수요 대비 `incremental_demand_rate`
+- 구성 메뉴가 없던 주메뉴 주문의 `take_rate`
+- 기존 주메뉴+구성 메뉴 주문의 `copurchase_take_rate`
+- 기존 주메뉴 수요 대비 `incremental_demand_rate`
 - 다른 주메뉴의 `cannibalization_rate`
 
 이 비율은 POS에서 직접 식별할 수 없으므로 에이전트가 확정값처럼 만들면 안 된다. 사용자 가정
@@ -66,16 +64,25 @@ Agent와 시스템 프롬프트는 값을 복제하지 않는다. 도구 호출 
 
 ### `compare_price_strategies_with_forecast`
 
-현재 HTTP 서비스는 주소를 받아 카카오 좌표 변환을 수행한다. Agent용 계약에서는 주소 검색과
-예보 조회를 분리하거나, 같은 도구가 다음 위치 입력 중 정확히 하나를 받도록 보강한다.
+`location`은 다음 위치 입력 중 정확히 하나를 받는다.
 
 - 주소 검색 문자열
 - WGS84 위도·경도
 - 기상청 `nx`, `ny`
 
-주소 검색 문자열은 좌표와 격자를 확인한 뒤 폐기한다. Agent 세션은 `source`, `kma_nx`,
-`kma_ny`, `resolved_at`, `expires_at`을 보관하고, 지도 표시가 필요한 경우에만 위도·경도를
-세션에 유지한다. 감사 로그에는 주소와 정확한 좌표를 남기지 않는다.
+주소 검색 문자열은 좌표와 격자를 확인한 뒤 폐기한다. 도구 응답에는 주소 원문·정규화 주소·정확한
+위경도를 넣지 않고 `location_source`, `nx`, `ny`와 예보 적용 범위만 반환한다. Agent 세션은
+`source`, `kma_nx`, `kma_ny`, `resolved_at`, `expires_at`을 보관한다.
+
+### Feedback 도구
+
+- `create_experiment_plan`: 예측 스냅샷, 기간, 전략, 판단 문맥을 저장한다.
+- `list_pending_experiments`: 실제 결과가 없는 계획을 메뉴별 또는 전체 조회한다.
+- `record_experiment_result`: `feedback_id`에 실제 판매량·기여이익·기준 기여이익을 연결한다.
+- `get_feedback_summary`: 완료 기록의 MAE, 80% 구간 포함률과 방향 정확도를 조회한다.
+
+네 도구는 `TOOL_SCHEMAS`와 `execute_tool`에 등록돼 있으며 저장소 검증 오류도 공통 오류 객체로
+반환한다.
 
 ## 도구 등록에 사용할 코드
 
@@ -140,8 +147,8 @@ Decision Engine의 데이터 출처, 근거 품질 산식과 검증 계획은
 4. 함수 호출을 `execute_tool`로 전달
 5. 도구 결과를 사용자가 이해할 수 있는 경영 언어로 설명
 
-Agent 본체 구현 전에 이 문서의 A단계 최소 보강만 먼저 완료한다. 그 뒤 가격 질문 한 건의
-Mock LLM 세로 흐름부터 만들며, 추가 설계를 위해 A단계를 확대하지 않는다.
+A단계 Tool Contract 보강은 완료됐다. 다음 단계는 가격 질문 한 건의 Mock LLM 세로 흐름이며,
+추가 설계를 위해 A단계를 확대하지 않는다.
 
 Agent 본체의 필수 회귀 사례는 [MarginCast Agent MVP 평가 시나리오](agent-evaluation.md)에
 정리했다.

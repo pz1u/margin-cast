@@ -1,4 +1,6 @@
 {
+  "main_menu_id": "M01",
+  "component_menu_ids": ["M06"],
   "scenario": {
     "name": "치킨마요 콜라 세트",
     "bundle_price": 10000,

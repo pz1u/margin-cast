@@ -32,8 +32,8 @@ class BundleSimulationTests(unittest.TestCase):
 
     def test_evidence_excludes_ground_truth_and_has_opportunities(self):
         self.assertFalse(self.evidence["ground_truth_used"])
-        self.assertGreater(self.evidence["main_without_drink"]["orders"], 0)
-        self.assertGreater(self.evidence["main_with_drink"]["orders"], 0)
+        self.assertGreater(self.evidence["main_without_components"]["orders"], 0)
+        self.assertGreater(self.evidence["main_with_components"]["orders"], 0)
         self.assertGreater(self.evidence["other_main"]["orders"], 0)
 
     def test_bundle_simulation_is_reproducible_and_separates_origins(self):
@@ -57,7 +57,7 @@ class BundleSimulationTests(unittest.TestCase):
         self.assertEqual(
             set(first["orders"]),
             {
-                "converted_main_without_drink",
+                "converted_main_without_components",
                 "converted_existing_copurchase",
                 "cannibalized_other_main",
                 "incremental",
@@ -92,6 +92,28 @@ class BundleSimulationTests(unittest.TestCase):
         scenario = {**DEFAULT_BUNDLE_SCENARIO, "cannibalization_rate": 1.1}
         with self.assertRaises(ValueError):
             validate_bundle_scenario(scenario)
+
+    def test_evidence_accepts_generic_main_and_multiple_components(self):
+        evidence = build_bundle_evidence(
+            load_observed_tables(self.root),
+            main_menu_id="M02",
+            component_menu_ids=["M05", "M07"],
+        )
+        self.assertEqual(evidence["main_menu_id"], "M02")
+        self.assertEqual(evidence["component_menu_ids"], ["M05", "M07"])
+        self.assertEqual(evidence["prices"]["components"], 5500.0)
+
+    def test_bundle_menu_ids_reject_unknown_duplicate_and_main_component(self):
+        tables = load_observed_tables(self.root)
+        invalid_values = (["M99"], ["M06", "M06"], ["M01"])
+        for component_menu_ids in invalid_values:
+            with self.subTest(component_menu_ids=component_menu_ids):
+                with self.assertRaises(ValueError):
+                    build_bundle_evidence(
+                        tables,
+                        main_menu_id="M01",
+                        component_menu_ids=component_menu_ids,
+                    )
 
 
 if __name__ == "__main__":

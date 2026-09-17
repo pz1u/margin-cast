@@ -46,7 +46,7 @@ class ForecastDecisionServiceTests(unittest.TestCase):
             forecast_fetcher=fake_forecast_fetcher,
         )
         result = service.compare_price_strategies(
-            address="서울특별시 중구 세종대로 110",
+            location={"address": "서울특별시 중구 세종대로 110"},
             menu_id="M01",
             scenarios=[{"name": "인상", "list_price": 9500, "discount": 0}],
             horizon_days=4,
@@ -61,6 +61,45 @@ class ForecastDecisionServiceTests(unittest.TestCase):
         self.assertEqual(result["weather"]["available_to"], "2026-09-19")
         self.assertEqual(result["weather"]["applied_to"], "2026-09-18")
         self.assertNotIn("query", result["weather"])
+        self.assertNotIn("address_name", result["weather"])
+        self.assertEqual(result["weather"]["location_source"], "address")
+
+    def test_wgs84_and_grid_locations_skip_address_geocoding(self):
+        def fail_geocoder(address, env_path):
+            raise AssertionError("좌표 또는 격자 입력에서 주소 검색을 호출하면 안 됩니다.")
+
+        service = ForecastDecisionService(
+            FakeDecisionService(),
+            geocoder=fail_geocoder,
+            forecast_fetcher=fake_forecast_fetcher,
+        )
+        coordinate_result = service.compare_price_strategies(
+            location={"latitude": 37.5665, "longitude": 126.9780},
+            menu_id="M01",
+            scenarios=[],
+        )
+        grid_result = service.compare_price_strategies(
+            location={"nx": 60, "ny": 127},
+            menu_id="M01",
+            scenarios=[],
+        )
+        self.assertEqual(coordinate_result["weather"]["location_source"], "wgs84")
+        self.assertEqual(grid_result["weather"]["location_source"], "kma_grid")
+        self.assertEqual((grid_result["weather"]["nx"], grid_result["weather"]["ny"]), (60, 127))
+
+    def test_mixed_location_modes_are_rejected(self):
+        service = ForecastDecisionService(
+            FakeDecisionService(),
+            geocoder=fake_geocoder,
+            forecast_fetcher=fake_forecast_fetcher,
+        )
+        with self.assertRaises(ForecastDecisionError) as context:
+            service.compare_price_strategies(
+                location={"address": "서울", "nx": 60, "ny": 127},
+                menu_id="M01",
+                scenarios=[],
+            )
+        self.assertEqual(context.exception.code, "INVALID_LOCATION")
 
     def test_forecast_horizon_is_limited_to_short_term_coverage(self):
         service = ForecastDecisionService(

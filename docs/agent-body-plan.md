@@ -105,28 +105,27 @@ Response Policy는 사후 문장 검사만 하는 모듈이 아니다. ToolResul
 
 | 의도 | 예시 | 도구 | 상태 |
 |---|---|---|---|
-| 기능 조회 | “무슨 메뉴를 분석할 수 있어?” | `get_margincast_capabilities` | 준비됨, `execution_defaults` 추가 필요 |
+| 기능 조회 | “무슨 메뉴를 분석할 수 있어?” | `get_margincast_capabilities` | 준비됨 |
 | 가격·할인 비교 | “치킨마요를 500원 올리면?” | `compare_price_strategies` | 준비됨 |
-| 세트 분석 | “치킨마요 콜라 세트 어때?” | `simulate_bundle_strategy` | 준비됨, 범용 메뉴 스키마 보강 예정 |
-| 실제 날씨 반영 | “우리 매장 기준 다음 4일은?” | `compare_price_strategies_with_forecast` | 주소 방식 준비됨, 좌표·격자 계약 보강 필요 |
-| 실험 계획 저장 | “이 안으로 7일 실험할게” | `create_experiment_plan` | HTTP 기능 준비됨, Agent 도구 등록 필요 |
-| 대기 실험 조회 | “결과 입력할 실험 보여줘” | `list_pending_experiments` | HTTP 기능 준비됨, Agent 도구 등록 필요 |
-| 실제 결과 입력 | “실제로 95개 팔렸어” | `record_experiment_result` | HTTP 기능 준비됨, Agent 도구 등록 필요 |
-| 누적 성능 조회 | “지금까지 예측 잘 맞았어?” | `get_feedback_summary` | HTTP 기능 준비됨, Agent 도구 등록 필요 |
+| 세트 분석 | “치킨마요 콜라 세트 어때?” | `simulate_bundle_strategy` | 준비됨 |
+| 실제 날씨 반영 | “우리 매장 기준 다음 4일은?” | `compare_price_strategies_with_forecast` | 준비됨 |
+| 실험 계획 저장 | “이 안으로 7일 실험할게” | `create_experiment_plan` | 준비됨 |
+| 대기 실험 조회 | “결과 입력할 실험 보여줘” | `list_pending_experiments` | 준비됨 |
+| 실제 결과 입력 | “실제로 95개 팔렸어” | `record_experiment_result` | 준비됨 |
+| 누적 성능 조회 | “지금까지 예측 잘 맞았어?” | `get_feedback_summary` | 준비됨 |
 
 새 분석을 시작하거나 데이터·엔진 버전이 달라졌을 때 capabilities를 다시 조회한다. 같은 대화에서
 버전이 유지되면 매 메시지마다 반복 호출하지 않는다.
 
-현재 엔진 함수의 실행 기본값은 14일·10,000회·seed 42지만 capabilities 응답에는 아직
-`execution_defaults`가 없다. A단계에서 Tool Contract가 아래 구조를 반환하도록 보강한 뒤에만
-Agent가 `DEFAULT` 출처로 사용할 수 있다. 시스템 프롬프트나 Agent 코드에 이 숫자를 복제하지 않는다.
+실행 기본값은 계산 엔진의 단일 정의에서 함수 기본값과 capabilities 응답을 함께 만든다. Agent는
+해당 도구의 값을 `DEFAULT` 출처로 사용하며 시스템 프롬프트나 Agent 코드에 숫자를 복제하지 않는다.
 
 ```json
 {
   "execution_defaults": {
-    "horizon_days": 14,
-    "simulations": 10000,
-    "seed": 42
+    "compare_price_strategies": {"horizon_days": 14, "simulations": 10000, "seed": 42},
+    "compare_price_strategies_with_forecast": {"horizon_days": 4, "simulations": 10000, "seed": 42},
+    "simulate_bundle_strategy": {"horizon_days": 14, "simulations": 10000, "seed": 42}
   }
 }
 ```

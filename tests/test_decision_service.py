@@ -134,6 +134,8 @@ class DecisionServiceTests(unittest.TestCase):
 
     def test_low_evidence_quality_bundle_is_limited_to_experiment(self):
         result = self.service.simulate_bundle_strategy(
+            "M01",
+            ["M06"],
             {
                 "name": "세트 실험",
                 "bundle_price": 10000,

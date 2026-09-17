@@ -5,6 +5,12 @@ from pathlib import Path
 import pandas as pd
 
 try:
+    from .execution_defaults import (
+        DEFAULT_HORIZON_DAYS,
+        DEFAULT_SEED,
+        DEFAULT_SIMULATIONS,
+        get_execution_defaults,
+    )
     from .evidence_quality import calculate_evidence_quality
     from .decision_policy import rank_strategies
     from .estimate_elasticity import estimate_price_elasticity
@@ -12,6 +18,12 @@ try:
     from .simulate_bundle import build_bundle_evidence, simulate_bundle
     from .simulate_strategy import build_reference_forecast, simulate_scenarios
 except ImportError:
+    from execution_defaults import (
+        DEFAULT_HORIZON_DAYS,
+        DEFAULT_SEED,
+        DEFAULT_SIMULATIONS,
+        get_execution_defaults,
+    )
     from evidence_quality import calculate_evidence_quality
     from decision_policy import rank_strategies
     from estimate_elasticity import estimate_price_elasticity
@@ -160,10 +172,16 @@ class MarginCastDecisionService:
             "supported_menus": supported,
             "unsupported_menus": unsupported,
             "operations": [
-                "get_capabilities",
+                "get_margincast_capabilities",
                 "compare_price_strategies",
+                "compare_price_strategies_with_forecast",
                 "simulate_bundle_strategy",
+                "create_experiment_plan",
+                "list_pending_experiments",
+                "record_experiment_result",
+                "get_feedback_summary",
             ],
+            "execution_defaults": get_execution_defaults(),
             "limits": {
                 "horizon_days": {"minimum": 1, "maximum": int(panel["day_index"].nunique())},
                 "simulations": {"minimum": MIN_SIMULATIONS, "maximum": MAX_SIMULATIONS},
@@ -260,9 +278,9 @@ class MarginCastDecisionService:
         self,
         menu_id,
         scenarios,
-        horizon_days=14,
-        simulations=10_000,
-        seed=42,
+        horizon_days=DEFAULT_HORIZON_DAYS,
+        simulations=DEFAULT_SIMULATIONS,
+        seed=DEFAULT_SEED,
         forecasts=None,
     ):
         self._validate_compare_request(menu_id, scenarios, horizon_days, simulations, seed)
@@ -388,10 +406,12 @@ class MarginCastDecisionService:
 
     def simulate_bundle_strategy(
         self,
+        main_menu_id,
+        component_menu_ids,
         scenario,
-        horizon_days=14,
-        simulations=10_000,
-        seed=42,
+        horizon_days=DEFAULT_HORIZON_DAYS,
+        simulations=DEFAULT_SIMULATIONS,
+        seed=DEFAULT_SEED,
     ):
         if isinstance(horizon_days, bool) or not isinstance(horizon_days, int) or horizon_days < 1:
             raise DecisionServiceError("INVALID_HORIZON", "horizon_days는 1 이상의 정수여야 합니다.")
@@ -406,8 +426,28 @@ class MarginCastDecisionService:
             )
         if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= 2**32 - 1:
             raise DecisionServiceError("INVALID_SEED", "seed는 0~2^32-1 범위의 정수여야 합니다.")
+        if not isinstance(main_menu_id, str) or not main_menu_id.strip():
+            raise DecisionServiceError("INVALID_BUNDLE_MENUS", "main_menu_id를 입력하세요.")
+        if (
+            not isinstance(component_menu_ids, list)
+            or not 1 <= len(component_menu_ids) <= 4
+            or any(not isinstance(value, str) or not value.strip() for value in component_menu_ids)
+        ):
+            raise DecisionServiceError(
+                "INVALID_BUNDLE_MENUS",
+                "component_menu_ids는 1~4개의 메뉴 ID 배열이어야 합니다.",
+            )
         tables = load_observed_tables(self.data_dir)
-        evidence = build_bundle_evidence(tables)
+        try:
+            evidence = build_bundle_evidence(
+                tables,
+                main_menu_id=main_menu_id,
+                component_menu_ids=component_menu_ids,
+            )
+        except (KeyError, ValueError) as error:
+            raise DecisionServiceError(
+                "INVALID_BUNDLE_MENUS", str(error)
+            ) from error
         panel = self._load_panel().copy()
         panel["date"] = pd.to_datetime(panel["date"])
         bundle_start = tables["bundles"]["start_date"].min()
@@ -433,6 +473,8 @@ class MarginCastDecisionService:
             "status": "ok",
             "engine_version": SERVICE_VERSION,
             "request": {
+                "main_menu_id": main_menu_id,
+                "component_menu_ids": list(component_menu_ids),
                 "horizon_days": horizon_days,
                 "simulations": simulations,
                 "seed": seed,

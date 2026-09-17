@@ -23,10 +23,12 @@ except ImportError:
     )
 
 try:
+    from .execution_defaults import DEFAULT_HORIZON_DAYS, DEFAULT_SEED, DEFAULT_SIMULATIONS
     from .generate_data import PAYMENT_RATE, PLATFORM_RATE
     from .prepare_analysis_data import load_observed_tables
     from .simulate_strategy import summarize_distribution
 except ImportError:
+    from execution_defaults import DEFAULT_HORIZON_DAYS, DEFAULT_SEED, DEFAULT_SIMULATIONS
     from generate_data import PAYMENT_RATE, PLATFORM_RATE
     from prepare_analysis_data import load_observed_tables
     from simulate_strategy import summarize_distribution
@@ -64,7 +66,22 @@ def validate_bundle_scenario(scenario):
             raise ValueError(f"{name}은 0~1 범위여야 합니다.")
 
 
-def build_bundle_evidence(tables, main_menu_id="M01", drink_menu_id="M06"):
+def build_bundle_evidence(tables, main_menu_id="M01", component_menu_ids=("M06",)):
+    component_menu_ids = tuple(component_menu_ids)
+    if not component_menu_ids:
+        raise ValueError("component_menu_ids는 한 개 이상의 메뉴 ID를 포함해야 합니다.")
+    if len(component_menu_ids) != len(set(component_menu_ids)):
+        raise ValueError("component_menu_ids는 중복될 수 없습니다.")
+    if main_menu_id in component_menu_ids:
+        raise ValueError("main_menu_id는 component_menu_ids에 포함될 수 없습니다.")
+
+    menus = tables["menus"].set_index("menu_id")
+    requested_ids = {main_menu_id, *component_menu_ids}
+    unknown_ids = sorted(requested_ids - set(menus.index))
+    if unknown_ids:
+        raise ValueError(f"존재하지 않는 메뉴 ID가 있습니다: {unknown_ids}")
+    if menus.loc[main_menu_id, "category"] != "MAIN":
+        raise ValueError("main_menu_id는 MAIN 카테고리 메뉴여야 합니다.")
     bundle_start = tables["bundles"]["start_date"].min()
     orders = tables["orders"][["order_id", "date", "channel"]]
     items = tables["order_items"].merge(orders, on="order_id", how="left", validate="many_to_one")
@@ -75,8 +92,10 @@ def build_bundle_evidence(tables, main_menu_id="M01", drink_menu_id="M06"):
         menu_ids=("menu_id", set),
         channel=("channel", "first"),
     )
-    chicken = baskets["menu_ids"].map(lambda values: main_menu_id in values)
-    drink = baskets["menu_ids"].map(lambda values: drink_menu_id in values)
+    main = baskets["menu_ids"].map(lambda values: main_menu_id in values)
+    components = baskets["menu_ids"].map(
+        lambda values: all(menu_id in values for menu_id in component_menu_ids)
+    )
     main_ids = set(tables["menus"].loc[tables["menus"]["category"] == "MAIN", "menu_id"])
     other_main = baskets["menu_ids"].map(
         lambda values: main_menu_id not in values and bool(main_ids.intersection(values))
@@ -113,12 +132,20 @@ def build_bundle_evidence(tables, main_menu_id="M01", drink_menu_id="M06"):
     )
     return {
         "observed_days": operating_days,
-        "main_without_drink": segment(baskets[chicken & ~drink]),
-        "main_with_drink": segment(baskets[chicken & drink]),
+        "main_menu_id": main_menu_id,
+        "component_menu_ids": list(component_menu_ids),
+        "main_without_components": segment(baskets[main & ~components]),
+        "main_with_components": segment(baskets[main & components]),
         "other_main": segment(baskets[other_main]),
-        "main_daily_orders": float(chicken.sum() / operating_days),
-        "prices": {"main": prices[main_menu_id], "drink": prices[drink_menu_id]},
-        "costs": {"main": current_cost[main_menu_id], "drink": current_cost[drink_menu_id]},
+        "main_daily_orders": float(main.sum() / operating_days),
+        "prices": {
+            "main": prices[main_menu_id],
+            "components": sum(prices[menu_id] for menu_id in component_menu_ids),
+        },
+        "costs": {
+            "main": current_cost[main_menu_id],
+            "components": sum(current_cost[menu_id] for menu_id in component_menu_ids),
+        },
         "other_main_average": {"price": weighted_price, "cost": weighted_cost},
         "bundle_observed": True,
         "ground_truth_used": False,
@@ -135,9 +162,9 @@ def simulate_bundle(
     evidence,
     scenario,
     *,
-    horizon_days=14,
-    simulations=10_000,
-    seed=42,
+    horizon_days=DEFAULT_HORIZON_DAYS,
+    simulations=DEFAULT_SIMULATIONS,
+    seed=DEFAULT_SEED,
     demand_log_sigma=0.08,
     cost_relative_std=0.05,
     baseline_daily_profit=None,
@@ -158,8 +185,8 @@ def simulate_bundle(
         opportunities = rng.poisson(mean)
         return rng.binomial(opportunities, rate)
 
-    chicken_only = conversions("main_without_drink", scenario["take_rate"])
-    copurchase = conversions("main_with_drink", scenario["copurchase_take_rate"])
+    main_only = conversions("main_without_components", scenario["take_rate"])
+    copurchase = conversions("main_with_components", scenario["copurchase_take_rate"])
     cannibalized = conversions("other_main", scenario["cannibalization_rate"])
     incremental = rng.poisson(
         evidence["main_daily_orders"]
@@ -170,30 +197,30 @@ def simulate_bundle(
 
     bundle_price = float(scenario["bundle_price"])
     main_price = evidence["prices"]["main"]
-    drink_price = evidence["prices"]["drink"]
+    component_price = evidence["prices"]["components"]
     main_cost = evidence["costs"]["main"]
-    drink_cost = evidence["costs"]["drink"]
+    component_cost = evidence["costs"]["components"]
 
-    fee_chicken = _average_fee_rate(evidence["main_without_drink"]["delivery_share"])
-    fee_copurchase = _average_fee_rate(evidence["main_with_drink"]["delivery_share"])
+    fee_main = _average_fee_rate(evidence["main_without_components"]["delivery_share"])
+    fee_copurchase = _average_fee_rate(evidence["main_with_components"]["delivery_share"])
     fee_other = _average_fee_rate(evidence["other_main"]["delivery_share"])
-    delta_chicken = (
-        bundle_price * (1 - fee_chicken)
-        - (main_cost + drink_cost) * cost_factor
-        - (main_price * (1 - fee_chicken) - main_cost * cost_factor)
+    delta_main = (
+        bundle_price * (1 - fee_main)
+        - (main_cost + component_cost) * cost_factor
+        - (main_price * (1 - fee_main) - main_cost * cost_factor)
     )
-    delta_copurchase = (bundle_price - main_price - drink_price) * (1 - fee_copurchase)
+    delta_copurchase = (bundle_price - main_price - component_price) * (1 - fee_copurchase)
     other = evidence["other_main_average"]
     delta_other = (
         bundle_price * (1 - fee_other)
-        - (main_cost + drink_cost) * cost_factor
+        - (main_cost + component_cost) * cost_factor
         - (other["price"] * (1 - fee_other) - other["cost"] * cost_factor)
     )
     incremental_profit = (
-        bundle_price * (1 - fee_chicken) - (main_cost + drink_cost) * cost_factor
+        bundle_price * (1 - fee_main) - (main_cost + component_cost) * cost_factor
     )
     profit_delta = (
-        chicken_only * delta_chicken
+        main_only * delta_main
         + copurchase * delta_copurchase
         + cannibalized * delta_other
         + incremental * incremental_profit
@@ -214,7 +241,7 @@ def simulate_bundle(
             )
         },
         "orders": {
-            "converted_main_without_drink": summarize_distribution(chicken_only),
+            "converted_main_without_components": summarize_distribution(main_only),
             "converted_existing_copurchase": summarize_distribution(copurchase),
             "cannibalized_other_main": summarize_distribution(cannibalized),
             "incremental": summarize_distribution(incremental),
@@ -250,9 +277,9 @@ def run_bundle_simulation(
     panel_path,
     output_dir,
     scenario=None,
-    horizon_days=14,
-    simulations=10_000,
-    seed=42,
+    horizon_days=DEFAULT_HORIZON_DAYS,
+    simulations=DEFAULT_SIMULATIONS,
+    seed=DEFAULT_SEED,
 ):
     tables = load_observed_tables(data_dir)
     evidence = build_bundle_evidence(tables)
@@ -325,8 +352,8 @@ def main():
     parser.add_argument(
         "--output-dir", type=Path, default=root / "reports" / "simulation" / "bundle"
     )
-    parser.add_argument("--simulations", type=int, default=10_000)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--simulations", type=int, default=DEFAULT_SIMULATIONS)
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     args = parser.parse_args()
     report = run_bundle_simulation(
         args.data_dir,
