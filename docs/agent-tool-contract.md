@@ -134,8 +134,8 @@ Decision Engine의 데이터 출처, 근거 품질 산식과 검증 계획은
 
 ## 사용자에게 남은 구현
 
-1. 사용할 LLM과 에이전트 프레임워크 선택
-2. 시스템 프롬프트와 질문 흐름 작성
+1. Agent Schema와 Provider Interface 정의 (첫 공급자는 Ollama, 모델은 환경변수)
+2. Mock LLM으로 시스템 프롬프트와 질문 흐름 검증
 3. `TOOL_SCHEMAS` 등록
 4. 함수 호출을 `execute_tool`로 전달
 5. 도구 결과를 사용자가 이해할 수 있는 경영 언어로 설명
