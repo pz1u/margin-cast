@@ -61,7 +61,10 @@ class StrategySimulationTests(unittest.TestCase):
                 scenario["contribution_profit"]["p10"],
                 scenario["contribution_profit"]["p90"],
             )
-            self.assertFalse(scenario["confidence"]["is_probability"])
+            quality = scenario["evidence_quality"]
+            self.assertFalse(quality["is_probability"])
+            self.assertEqual(quality["version"], "heuristic-v1")
+            self.assertFalse(quality["validation"]["empirically_calibrated"])
 
     def test_invalid_scenario_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -92,8 +95,31 @@ class StrategySimulationTests(unittest.TestCase):
         self.assertEqual(source, "kma_forecast")
         self.assertEqual(len(reference), 2 * 11 * 2)
         self.assertEqual(set(reference["weather"]), {"CLEAR", "RAIN"})
+        self.assertEqual(
+            sorted(reference["day_index"].unique().tolist()),
+            [int(self.panel["day_index"].max()) + 1, int(self.panel["day_index"].max()) + 2],
+        )
         with self.assertRaises(ValueError):
             build_reference_forecast(self.panel, horizon_days=3, forecasts=forecasts)
+
+    def test_calendar_gap_does_not_extrapolate_learned_time_trend(self):
+        last_date = self.panel["date"].max()
+        future_date = (last_date + pd.Timedelta(days=90)).strftime("%Y-%m-%d")
+        forecasts = [
+            {
+                "date": future_date,
+                "time": "12:00",
+                "forecast_at": f"{future_date}T12:00:00+09:00",
+                "is_rain": False,
+            }
+        ]
+        reference, _, _ = build_reference_forecast(
+            self.panel, horizon_days=1, forecasts=forecasts
+        )
+        self.assertEqual(
+            reference["day_index"].unique().tolist(),
+            [int(self.panel["day_index"].max()) + 1],
+        )
 
 
 if __name__ == "__main__":

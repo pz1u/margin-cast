@@ -1,7 +1,7 @@
-"""기대이익·개선확률·하방 위험·신뢰도로 전략의 실행 단계를 정한다."""
+"""기대이익·개선확률·하방 위험·근거 품질로 전략의 실행 단계를 정한다."""
 
 
-CONFIDENCE_WEIGHT = {"LOW": 0.5, "MEDIUM": 0.75, "HIGH": 1.0}
+EVIDENCE_QUALITY_WEIGHT = {"LOW": 0.5, "MEDIUM": 0.75, "HIGH": 1.0}
 ACTION_PRIORITY = {"HOLD": 0, "EXPERIMENT": 1, "RECOMMEND": 2}
 
 
@@ -11,12 +11,12 @@ def assess_strategy(strategy):
     expected = float(strategy["profit_delta"]["mean"])
     lower_80 = float(strategy["profit_delta"]["p10"])
     probability = float(strategy["success_probability"])
-    confidence = strategy["confidence"]
-    label = confidence["label"]
-    confidence_weight = CONFIDENCE_WEIGHT[label]
+    evidence_quality = strategy["evidence_quality"]
+    label = evidence_quality["label"]
+    quality_weight = EVIDENCE_QUALITY_WEIGHT[label]
     downside_penalty = max(0.0, -lower_80)
     decision_value = (
-        expected * confidence_weight * (0.5 + 0.5 * probability) - downside_penalty
+        expected * quality_weight * (0.5 + 0.5 * probability) - downside_penalty
     )
 
     if expected <= 0 or probability < 0.5:
@@ -27,7 +27,7 @@ def assess_strategy(strategy):
         reason = "기대 개선은 있으나 근거·하방 범위·개선확률 중 하나가 본 실행 기준에 못 미친다."
     else:
         action = "RECOMMEND"
-        reason = "개선확률이 75% 이상이고 80% 범위의 하한이 0 이상이며 신뢰도가 MEDIUM 이상이다."
+        reason = "개선확률이 75% 이상이고 80% 범위의 하한이 0 이상이며 근거 품질이 MEDIUM 이상이다."
     return {
         "action": action,
         "decision_value": float(decision_value),
@@ -39,8 +39,9 @@ def assess_strategy(strategy):
             "expected_profit_delta": expected,
             "profit_delta_p10": lower_80,
             "success_probability": probability,
-            "confidence_label": label,
-            "confidence_score": confidence["score"],
+            "evidence_quality_label": label,
+            "evidence_quality_score": evidence_quality["score"],
+            "evidence_quality_version": evidence_quality["version"],
         },
     }
 

@@ -5,14 +5,14 @@ from pathlib import Path
 import pandas as pd
 
 try:
-    from .confidence_score import calculate_confidence
+    from .evidence_quality import calculate_evidence_quality
     from .decision_policy import rank_strategies
     from .estimate_elasticity import estimate_price_elasticity
     from .prepare_analysis_data import load_observed_tables
     from .simulate_bundle import build_bundle_evidence, simulate_bundle
     from .simulate_strategy import build_reference_forecast, simulate_scenarios
 except ImportError:
-    from confidence_score import calculate_confidence
+    from evidence_quality import calculate_evidence_quality
     from decision_policy import rank_strategies
     from estimate_elasticity import estimate_price_elasticity
     from prepare_analysis_data import load_observed_tables
@@ -20,10 +20,21 @@ except ImportError:
     from simulate_strategy import build_reference_forecast, simulate_scenarios
 
 
-SERVICE_VERSION = "0.2.0"
+SERVICE_VERSION = "0.5.0"
 MIN_SIMULATIONS = 100
 MAX_SIMULATIONS = 50_000
 MAX_SCENARIOS = 8
+REQUIRED_UNIQUE_PRICE_LEVELS = 2
+
+DATA_PROVENANCE = {
+    "source_type": "synthetic_pos",
+    "dataset_version": "synthetic-pos-v2",
+    "uses_actual_store_data": False,
+    "label": "SYNTHETIC_DATA_PROTOTYPE",
+    "warning": (
+        "현재 예측은 합성 POS 데이터에서 학습한 프로토타입 결과이며 실제 매장 성과를 보증하지 않는다."
+    ),
+}
 
 
 class DecisionServiceError(ValueError):
@@ -71,11 +82,9 @@ class MarginCastDecisionService:
             self._panel = panel
         return self._panel
 
-    def _supported_menus(self):
+    def _menu_support_profiles(self):
         panel = self._load_panel()
         train = panel[panel["split"] == "train"]
-        price_counts = train.groupby("menu_id")["offered_list_price"].nunique()
-        supported_ids = set(price_counts[price_counts >= 2].index)
         menus = (
             panel[["menu_id", "menu_name", "initial_list_price"]]
             .drop_duplicates("menu_id")
@@ -86,14 +95,57 @@ class MarginCastDecisionService:
                 "menu_id": row.menu_id,
                 "menu_name": row.menu_name,
                 "baseline_price": int(row.initial_list_price),
+                "supported": len(
+                    train.loc[
+                        train["menu_id"] == row.menu_id, "offered_list_price"
+                    ].unique()
+                )
+                >= REQUIRED_UNIQUE_PRICE_LEVELS,
+                "observed_price_levels": sorted(
+                    int(value)
+                    for value in train.loc[
+                        train["menu_id"] == row.menu_id, "offered_list_price"
+                    ].unique()
+                ),
+                "required_unique_price_levels": REQUIRED_UNIQUE_PRICE_LEVELS,
             }
             for row in menus.itertuples(index=False)
-            if row.menu_id in supported_ids
         ]
+
+    def _supported_menus(self):
+        return [
+            {key: value for key, value in profile.items() if key != "supported"}
+            for profile in self._menu_support_profiles()
+            if profile["supported"]
+        ]
+
+    def _data_provenance(self):
+        panel = self._load_panel()
+        train = panel[panel["split"] == "train"]
+        result = dict(DATA_PROVENANCE)
+        result["training_rows"] = int(len(train))
+        if "date" in train:
+            dates = pd.to_datetime(train["date"])
+            result["training_period"] = {
+                "start": dates.min().strftime("%Y-%m-%d"),
+                "end": dates.max().strftime("%Y-%m-%d"),
+            }
+        return result
 
     def get_capabilities(self):
         panel = self._load_panel()
         supported = self._supported_menus()
+        unsupported = [
+            {
+                **{key: value for key, value in profile.items() if key != "supported"},
+                "reason_code": "INSUFFICIENT_PRICE_VARIATION",
+                "next_step": (
+                    "기준 가격 외 최소 한 개 가격을 별도 기간에 운영해 두 개 이상의 가격 수준을 확보하세요."
+                ),
+            }
+            for profile in self._menu_support_profiles()
+            if not profile["supported"]
+        ]
         return {
             "status": "ok",
             "service": "MarginCast Decision Engine",
@@ -104,7 +156,9 @@ class MarginCastDecisionService:
                 "rows": int(len(panel)),
                 "ground_truth_used": False,
             },
+            "data_provenance": self._data_provenance(),
             "supported_menus": supported,
+            "unsupported_menus": unsupported,
             "operations": [
                 "get_capabilities",
                 "compare_price_strategies",
@@ -116,19 +170,35 @@ class MarginCastDecisionService:
                 "scenarios": {"minimum": 1, "maximum": MAX_SCENARIOS},
             },
             "limitations": [
-                "가격탄력성은 학습 구간에 두 개 이상의 정가가 관측된 메뉴만 지원한다.",
+                "가격탄력성은 학습 구간에 두 개 이상의 가격 수준이 관측된 메뉴만 지원한다.",
                 "미래 날씨 입력 전까지 최근 관측 문맥을 재사용한다.",
                 "세트 전략의 신규 수요와 잠식 효과는 사용자가 명시한 가정으로 계산한다.",
+                "근거 품질 점수는 실제 매장 결과로 아직 보정되지 않은 휴리스틱이다.",
             ],
         }
 
     def _validate_compare_request(self, menu_id, scenarios, horizon_days, simulations, seed):
-        supported_ids = {row["menu_id"] for row in self._supported_menus()}
+        profiles = {row["menu_id"]: row for row in self._menu_support_profiles()}
+        supported_ids = {menu_id for menu_id, row in profiles.items() if row["supported"]}
         if menu_id not in supported_ids:
+            profile = profiles.get(menu_id)
+            details = {
+                "supported_menu_ids": sorted(supported_ids),
+                "reason_code": (
+                    "INSUFFICIENT_PRICE_VARIATION" if profile else "UNKNOWN_MENU"
+                ),
+                "required_unique_price_levels": REQUIRED_UNIQUE_PRICE_LEVELS,
+                "observed_price_levels": profile["observed_price_levels"] if profile else [],
+                "next_step": (
+                    "기준 가격 외 최소 한 개 가격을 별도 기간에 운영해 두 개 이상의 가격 수준을 확보하세요."
+                    if profile
+                    else "capabilities의 supported_menus와 unsupported_menus에서 메뉴 ID를 확인하세요."
+                ),
+            }
             raise DecisionServiceError(
                 "UNSUPPORTED_MENU",
-                f"{menu_id}는 가격탄력성 근거가 부족해 전략 비교를 지원하지 않습니다.",
-                {"supported_menu_ids": sorted(supported_ids)},
+                f"{menu_id}는 가격 변화 근거가 부족해 전략 비교를 지원하지 않습니다.",
+                details,
             )
         if isinstance(horizon_days, bool) or not isinstance(horizon_days, int):
             raise DecisionServiceError("INVALID_HORIZON", "horizon_days는 정수여야 합니다.")
@@ -193,17 +263,26 @@ class MarginCastDecisionService:
         horizon_days=14,
         simulations=10_000,
         seed=42,
+        forecasts=None,
     ):
         self._validate_compare_request(menu_id, scenarios, horizon_days, simulations, seed)
         panel = self._load_panel()
         if menu_id not in self._elasticity_cache:
             self._elasticity_cache[menu_id] = estimate_price_elasticity(panel, menu_id=menu_id)
-        reference_key = (menu_id, horizon_days)
-        if reference_key not in self._reference_cache:
-            self._reference_cache[reference_key] = build_reference_forecast(
-                panel, menu_id=menu_id, horizon_days=horizon_days
+        if forecasts is None:
+            reference_key = (menu_id, horizon_days)
+            if reference_key not in self._reference_cache:
+                self._reference_cache[reference_key] = build_reference_forecast(
+                    panel, menu_id=menu_id, horizon_days=horizon_days
+                )
+            reference, baseline_price, context_source = self._reference_cache[reference_key]
+        else:
+            reference, baseline_price, context_source = build_reference_forecast(
+                panel,
+                menu_id=menu_id,
+                horizon_days=horizon_days,
+                forecasts=forecasts,
             )
-        reference, baseline_price, _ = self._reference_cache[reference_key]
         normalized = [dict(value) for value in scenarios]
         reference_count = sum(
             value["list_price"] - value["discount"] == baseline_price
@@ -233,14 +312,14 @@ class MarginCastDecisionService:
             seed=seed,
         )
         for scenario, result in zip(normalized, results):
-            result["confidence"] = (
+            result["evidence_quality"] = (
                 None
                 if result["is_reference"]
-                else calculate_confidence(
+                else calculate_evidence_quality(
                     panel,
                     self._elasticity_cache[menu_id],
                     scenario,
-                    "observed_history",
+                    context_source,
                 )
             )
         ranked = rank_strategies(results)
@@ -250,12 +329,23 @@ class MarginCastDecisionService:
             row["downside_risk"] = bool(row.get("decision", {}).get("downside_risk", False))
         return {
             "status": "ok",
+            "engine_version": SERVICE_VERSION,
             "request": {
                 "menu_id": menu_id,
                 "horizon_days": horizon_days,
                 "simulations": simulations,
                 "seed": seed,
             },
+            "weather_context_source": context_source,
+            "weather_context": {
+                "source": context_source,
+                "uses_future_forecast": context_source == "kma_forecast",
+                "menu_specific_causal_effect_validated": False,
+                "interpretation": (
+                    "날씨는 미래 수요 문맥으로 사용되며 메뉴별 날씨 인과효과를 입증하지 않는다."
+                ),
+            },
+            "data_provenance": self._data_provenance(),
             "model": {
                 "elasticity": self._elasticity_cache[menu_id]["elasticity"],
                 "elasticity_standard_error": self._elasticity_cache[menu_id]["robust_standard_error"],
@@ -267,7 +357,7 @@ class MarginCastDecisionService:
                 "expected_contribution_profit": recommended["contribution_profit"]["mean"],
                 "success_probability": recommended["success_probability"],
                 "downside_risk": recommended["downside_risk"],
-                "confidence": recommended["confidence"],
+                "evidence_quality": recommended["evidence_quality"],
             },
             "decision_ranking": [
                 {
@@ -284,10 +374,15 @@ class MarginCastDecisionService:
             },
             "interpretation_notes": [
                 "highest_expected_profit은 기대값 기준 정렬이며 최종 실행 결정은 아니다.",
-                "decision_ranking은 기대이익·개선확률·80% 하한·신뢰도를 함께 반영한다.",
+                "decision_ranking은 기대이익·개선확률·80% 하한·근거 품질을 함께 반영한다.",
                 "downside_risk는 현재 대비 기여이익 차이의 10백분위가 0보다 작은 경우 true다.",
-                "미래 날씨 예보가 없으므로 최근 관측 문맥을 재사용했다.",
-                "confidence는 근거 품질 점수이며 success_probability와 별개다.",
+                (
+                    "기상청 단기예보를 미래 날짜의 영업시간 문맥으로 사용했다."
+                    if context_source == "kma_forecast"
+                    else "미래 날씨 예보가 없으므로 최근 관측 문맥을 재사용했다."
+                ),
+                "evidence_quality는 실제 매장 결과로 아직 보정되지 않은 휴리스틱이며 success_probability와 별개다.",
+                "날씨는 미래 수요 문맥으로 사용되며 메뉴별 날씨 인과효과를 입증하지 않는다.",
             ],
         }
 
@@ -336,16 +431,19 @@ class MarginCastDecisionService:
         decision = rank_strategies([result])[0]["decision"]
         return {
             "status": "ok",
+            "engine_version": SERVICE_VERSION,
             "request": {
                 "horizon_days": horizon_days,
                 "simulations": simulations,
                 "seed": seed,
             },
+            "data_provenance": self._data_provenance(),
             "strategy": result,
             "decision": decision,
             "interpretation_notes": [
                 "세트 전환율·신규 수요율·잠식률은 사용자가 제공한 시나리오 가정이다.",
-                "근거 신뢰도가 LOW이면 기대이익과 개선확률이 높아도 EXPERIMENT로 제한한다.",
+                "근거 품질이 LOW이면 기대이익과 개선확률이 높아도 EXPERIMENT로 제한한다.",
+                "근거 품질 점수는 실제 매장 결과로 아직 보정되지 않은 휴리스틱이다.",
                 "계산과 의사결정에 ground_truth.json을 사용하지 않았다.",
             ],
         }

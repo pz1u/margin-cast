@@ -2,13 +2,18 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from src.confidence_score import calculate_confidence
+from src.evidence_quality import (
+    EVIDENCE_QUALITY_POLICY,
+    EVIDENCE_QUALITY_POLICY_FINGERPRINT,
+    calculate_evidence_quality,
+    validate_evidence_quality_version,
+)
 from src.estimate_elasticity import estimate_price_elasticity
 from src.generate_data import generate_dataset, save_dataset
 from src.prepare_analysis_data import prepare_analysis_data
 
 
-class ConfidenceScoreTests(unittest.TestCase):
+class EvidenceQualityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory()
@@ -24,32 +29,44 @@ class ConfidenceScoreTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.temporary.cleanup()
 
-    def test_confidence_is_separate_from_probability_and_explained(self):
-        result = calculate_confidence(
+    def test_evidence_quality_is_unvalidated_and_separate_from_probability(self):
+        result = calculate_evidence_quality(
             self.panel,
             self.elasticity,
             {"name": "500원 인상", "list_price": 9500, "discount": 0},
             "observed_history",
         )
         self.assertFalse(result["is_probability"])
+        self.assertEqual(result["version"], "heuristic-v1")
+        self.assertEqual(
+            result["formula_fingerprint"], EVIDENCE_QUALITY_POLICY_FINGERPRINT
+        )
+        self.assertFalse(result["validation"]["empirically_calibrated"])
         self.assertIn(result["label"], {"LOW", "MEDIUM", "HIGH"})
         self.assertEqual(sum(result["components"].values()), result["score"])
         self.assertEqual(result["evidence"]["price_events"], 4)
 
-    def test_forecast_and_observed_range_raise_confidence(self):
+    def test_forecast_and_observed_range_raise_evidence_quality(self):
         supported = {"name": "500원 인상", "list_price": 9500, "discount": 0}
         extrapolated = {"name": "큰 인상", "list_price": 12000, "discount": 0}
-        observed = calculate_confidence(
+        observed = calculate_evidence_quality(
             self.panel, self.elasticity, supported, "observed_history"
         )
-        forecast = calculate_confidence(
+        forecast = calculate_evidence_quality(
             self.panel, self.elasticity, supported, "kma_forecast"
         )
-        outside = calculate_confidence(
+        outside = calculate_evidence_quality(
             self.panel, self.elasticity, extrapolated, "observed_history"
         )
         self.assertGreater(forecast["score"], observed["score"])
         self.assertGreater(observed["score"], outside["score"])
+
+    def test_policy_change_requires_a_new_registered_version(self):
+        changed_policy = dict(EVIDENCE_QUALITY_POLICY)
+        changed_policy["high_threshold"] = 81.0
+
+        with self.assertRaises(RuntimeError):
+            validate_evidence_quality_version(changed_policy, "heuristic-v1")
 
 
 if __name__ == "__main__":

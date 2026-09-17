@@ -125,8 +125,11 @@ Copy-Item .env.example .env
 ## 가격·할인 시뮬레이션
 
 기준 수요 모델과 탄력성 추정치를 연결해 14일 전략별 판매량·기여이익 분포를 계산합니다.
-수요·탄력성·할인효과·원가 불확실성을 반영하고 80% 예상 범위, 개선확률, 근거 품질
-신뢰도(`HIGH`/`MEDIUM`/`LOW`)를 서로 분리해 반환합니다.
+수요·탄력성·할인효과·원가 불확실성을 반영하고 80% 예상 범위, 개선확률과 미보정
+근거 품질(`HIGH`/`MEDIUM`/`LOW`)을 서로 분리해 반환합니다. 현재 결과는 실제 POS가 아닌
+`synthetic-pos-v2` 기반 프로토타입이며, 근거 품질과 실제 정확도의 관계도 아직 검증되지
+않았습니다. 자세한 산식과 검증 계획은
+[Decision Engine 데이터 출처와 판단 방법](docs/decision-methodology.md)을 참고하세요.
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.simulate_strategy
@@ -136,7 +139,7 @@ Copy-Item .env.example .env
 [Monte Carlo 시뮬레이션 보고서](reports/simulation/README.md)에 저장됩니다.
 
 세트는 관측 장바구니 기회와 사용자가 입력하는 Take Rate·신규 수요율·잠식률을 분리해
-계산합니다. POS만으로 세 값이 식별되지 않으므로 기본 결과의 신뢰도는 `LOW`입니다.
+계산합니다. POS만으로 세 값이 식별되지 않으므로 기본 결과의 근거 품질은 `LOW`입니다.
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.simulate_bundle
@@ -158,3 +161,25 @@ AI 에이전트가 계산 결과를 직접 생성하지 않고 검증된 엔진�
 ```
 
 연동 규칙과 남은 작업은 [에이전트 도구 연동 계약](docs/agent-tool-contract.md)을 참고하세요.
+Agent 본체의 역할, 대화 흐름, 응답 계약과 구현 순서는
+[MarginCast Agent 본체 기획서](docs/agent-body-plan.md)에 정리했습니다.
+
+## 실험 피드백
+
+가격·할인 전략을 실행하기 전에 예측 분포를 실험 계획으로 저장하고, 종료 뒤 실제 판매량과
+기여이익을 같은 계획에 연결합니다. 누적 기록으로 평균 절대 오차, 80% 예측 구간 포함률과
+이익 개선 방향 정확도를 확인하며 자동 재학습은 수행하지 않습니다. 입력 흐름과 해석 기준은
+[실험 피드백과 모델 보정 근거](docs/experiment-feedback.md)를 참고하세요.
+
+## HTTP API
+
+Agent와 웹사이트는 같은 계산 경계를 HTTP로 사용할 수 있습니다. 서버는 LLM을 실행하지 않고
+기능 조회, 가격·할인 비교와 세트 시뮬레이션만 제공합니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m src.http_api
+```
+
+기본 접속 주소는 `http://127.0.0.1:8000`입니다. 이 주소에서 전략 입력과 결과 비교 웹사이트도
+함께 열립니다. 화면 사용법은 [MarginCast 웹사이트](docs/web.md), 경로와 요청 형식은
+[MarginCast HTTP API](docs/http-api.md)를 참고하세요.

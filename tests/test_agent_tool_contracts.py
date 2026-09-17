@@ -44,6 +44,7 @@ class AgentToolContractTests(unittest.TestCase):
         result = execute_tool("get_margincast_capabilities", {}, self.service)
         self.assertEqual(result["status"], "ok")
         self.assertFalse(result["data"]["ground_truth_used"])
+        self.assertEqual(result["data_provenance"]["label"], "SYNTHETIC_DATA_PROTOTYPE")
 
     def test_compare_dispatch_accepts_json_string(self):
         arguments = {
@@ -74,6 +75,11 @@ class AgentToolContractTests(unittest.TestCase):
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["error"]["code"], "UNSUPPORTED_MENU")
         self.assertFalse(result["error"]["retryable"])
+        self.assertEqual(
+            result["error"]["details"]["reason_code"],
+            "INSUFFICIENT_PRICE_VARIATION",
+        )
+        self.assertIn("next_step", result["error"]["details"])
 
     def test_bundle_dispatch_returns_experiment_decision(self):
         arguments = {

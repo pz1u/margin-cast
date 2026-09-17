@@ -8,6 +8,21 @@ import numpy as np
 import pandas as pd
 
 try:
+    from .evidence_quality import (
+        EVIDENCE_QUALITY_POLICY,
+        EVIDENCE_QUALITY_POLICY_FINGERPRINT,
+        EVIDENCE_QUALITY_VALIDATION_STATUS,
+        EVIDENCE_QUALITY_VERSION,
+    )
+except ImportError:
+    from evidence_quality import (
+        EVIDENCE_QUALITY_POLICY,
+        EVIDENCE_QUALITY_POLICY_FINGERPRINT,
+        EVIDENCE_QUALITY_VALIDATION_STATUS,
+        EVIDENCE_QUALITY_VERSION,
+    )
+
+try:
     from .generate_data import PAYMENT_RATE, PLATFORM_RATE
     from .prepare_analysis_data import load_observed_tables
     from .simulate_strategy import summarize_distribution
@@ -206,10 +221,19 @@ def simulate_bundle(
         },
         "profit_delta": summarize_distribution(profit_delta),
         "success_probability": float(np.mean(profit_delta > 0)),
-        "confidence": {
-            "score": 35.0,
+        "evidence_quality": {
+            "version": EVIDENCE_QUALITY_VERSION,
+            "formula_fingerprint": EVIDENCE_QUALITY_POLICY_FINGERPRINT,
+            "score": EVIDENCE_QUALITY_POLICY["bundle_fixed_score"],
             "label": "LOW",
             "is_probability": False,
+            "validation": {
+                "status": EVIDENCE_QUALITY_VALIDATION_STATUS,
+                "empirically_calibrated": False,
+                "statement": (
+                    "실제 매장 피드백이 없어 점수와 예측 정확도의 관계는 아직 검증되지 않았다."
+                ),
+            },
             "reason": "신규 수요와 기존 주문 전환·잠식 비율이 관측치가 아닌 시나리오 가정이다.",
         },
         "ground_truth_used": False,
@@ -273,7 +297,7 @@ def render_report(report):
 - 기대 기여이익 변화: **{result['profit_delta']['mean']:+,.0f}원**
 - 80% 예상 범위: **[{result['profit_delta']['p10']:+,.0f}, {result['profit_delta']['p90']:+,.0f}]원**
 - 개선확률: **{result['success_probability']:.1%}**
-- 근거 신뢰도: **{result['confidence']['label']}**
+- 근거 품질: **{result['evidence_quality']['label']}** (`{result['evidence_quality']['version']}`)
 
 ## 시나리오 가정
 

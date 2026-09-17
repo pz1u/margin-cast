@@ -15,12 +15,12 @@ plt.rcParams["font.family"] = "Malgun Gothic"
 plt.rcParams["axes.unicode_minus"] = False
 
 try:
-    from .confidence_score import calculate_confidence
+    from .evidence_quality import calculate_evidence_quality
     from .estimate_elasticity import estimate_price_elasticity
     from .generate_data import PAYMENT_RATE, PLATFORM_RATE
     from .train_demand_model import CATEGORICAL_FEATURES, NUMERIC_FEATURES, add_model_features, build_model
 except ImportError:
-    from confidence_score import calculate_confidence
+    from evidence_quality import calculate_evidence_quality
     from estimate_elasticity import estimate_price_elasticity
     from generate_data import PAYMENT_RATE, PLATFORM_RATE
     from train_demand_model import CATEGORICAL_FEATURES, NUMERIC_FEATURES, add_model_features, build_model
@@ -68,16 +68,18 @@ def _build_kma_reference(frame, panel, forecasts, menu_id, horizon_days):
     latest = frame[(frame["menu_id"] == menu_id) & (frame["day_index"] == frame["day_index"].max())]
     template = latest.set_index(["hour", "channel"])
     records = []
-    for forecast_date in selected_dates:
+    last_day_index = int(frame["day_index"].max())
+    for forecast_offset, forecast_date in enumerate(selected_dates, start=1):
         day_forecast = forecast[forecast["date"] == forecast_date]
-        day_gap = int((pd.Timestamp(forecast_date) - panel_last_date).days)
         for hour in range(11, 22):
             distances = (day_forecast["hour"] - hour).abs()
             nearest = day_forecast.loc[distances.idxmin()]
             for channel in ("STORE", "DELIVERY"):
                 row = template.loc[(hour, channel)].copy()
                 row["date"] = pd.Timestamp(forecast_date)
-                row["day_index"] = int(frame["day_index"].max()) + day_gap
+                # 합성 데이터의 달력 종료일과 실제 오늘 사이 공백은 학습된 추세가 아니다.
+                # 예보 날짜는 요일에 사용하되 추세 인덱스는 마지막 관측 다음 날부터 잇는다.
+                row["day_index"] = last_day_index + forecast_offset
                 row["weekday"] = int(pd.Timestamp(forecast_date).weekday())
                 row["hour"] = hour
                 row["channel"] = channel
@@ -261,9 +263,9 @@ def run_simulation(
     )
     for scenario, result in zip(scenarios, results):
         if result["is_reference"]:
-            result["confidence"] = None
+            result["evidence_quality"] = None
         else:
-            result["confidence"] = calculate_confidence(
+            result["evidence_quality"] = calculate_evidence_quality(
                 panel, elasticity_report, scenario, context_source
             )
     report = {
@@ -350,7 +352,7 @@ def render_report(report):
             f"| {scenario['name']} | {scenario['paid_price']:,}원 | "
             f"{scenario['units']['mean']:.1f} | {scenario['contribution_profit']['mean']:,.0f}원 | "
             f"{scenario['profit_delta']['mean']:+,.0f}원 | {success} | "
-            f"{scenario['confidence']['label'] if scenario['confidence'] else '기준'} |"
+            f"{scenario['evidence_quality']['label'] if scenario['evidence_quality'] else '기준'} |"
         )
     limitations = "\n".join(f"- {item}" for item in report["limitations"])
     return f"""# 가격·할인 Monte Carlo 시뮬레이션
@@ -363,13 +365,13 @@ def render_report(report):
 
 ![전략별 기여이익 분포](strategy-comparison.png)
 
-| 전략 | 실결제가 | 기대 판매량 | 기대 기여이익 | 현재 대비 | 성공확률 | 신뢰도 |
+| 전략 | 실결제가 | 기대 판매량 | 기대 기여이익 | 현재 대비 | 성공확률 | 근거 품질 |
 |---|---:|---:|---:|---:|---:|---:|
 {chr(10).join(rows)}
 
 성공확률은 같은 14일 문맥에서 시나리오 기여이익이 현재 가격의 모의 결과보다 클 확률이다.
 각 전략의 상세 5·10·50·90·95 백분위는 `simulation.json`에 저장된다. 10~90 백분위가
-기본 80% 예상 범위다. 신뢰도는 근거 품질 점수이며 성공확률과 다른 값이다.
+기본 80% 예상 범위다. 근거 품질은 실제 결과로 아직 보정되지 않은 휴리스틱이며 성공확률과 다른 값이다.
 
 ## 해석 한계
 

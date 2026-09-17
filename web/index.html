@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="가격·할인·세트 전략을 실행 전에 비교하는 MarginCast">
+  <title>MarginCast — 매장 전략 시뮬레이션</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">본문으로 이동</a>
+
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="MarginCast 홈">
+      <span class="brand-mark" aria-hidden="true">MC</span>
+      <span>MarginCast</span>
+    </a>
+    <div class="service-status" aria-live="polite">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="service-status">계산 엔진 연결 중</span>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <section class="intro" aria-labelledby="page-title">
+      <p class="eyebrow">매장 의사결정 시뮬레이션</p>
+      <h1 id="page-title">바꾸기 전에<br>이익의 범위를 봅니다.</h1>
+      <p class="intro-copy">
+        가격, 할인, 세트 구성을 실제 매장에 적용하기 전에 판매량과 기여이익의 변화,
+        개선확률과 근거 품질을 함께 비교하세요.
+      </p>
+      <dl class="data-strip" aria-label="현재 분석 데이터">
+        <div><dt>분석 기간</dt><dd id="data-days">—</dd></div>
+        <div><dt>분석 셀</dt><dd id="data-rows">—</dd></div>
+        <div><dt>지원 메뉴</dt><dd id="menu-count">—</dd></div>
+      </dl>
+      <p class="data-provenance" id="data-provenance">현재 분석 데이터 출처를 확인하는 중입니다.</p>
+    </section>
+
+    <nav class="mode-tabs" aria-label="시뮬레이션 종류" role="tablist">
+      <button class="mode-tab is-active" id="price-tab" role="tab" aria-selected="true" aria-controls="price-panel" data-panel="price-panel">가격 · 할인</button>
+      <button class="mode-tab" id="bundle-tab" role="tab" aria-selected="false" aria-controls="bundle-panel" data-panel="bundle-panel">세트 구성</button>
+      <button class="mode-tab" id="feedback-tab" role="tab" aria-selected="false" aria-controls="feedback-panel" data-panel="feedback-panel">실험 피드백</button>
+    </nav>
+
+    <section class="simulator" id="price-panel" role="tabpanel" aria-labelledby="price-tab">
+      <form class="control-panel" id="price-form">
+        <div class="panel-heading">
+          <span class="step-number">01</span>
+          <div><p class="section-kicker">조건 입력</p><h2>가격 대안 만들기</h2></div>
+        </div>
+
+        <div class="form-grid compact-grid">
+          <label>메뉴<select id="menu-select" name="menu_id" required></select></label>
+          <label>비교 기간<select id="price-horizon" name="horizon_days"><option value="4">4일</option><option value="7">7일</option><option value="14" selected>14일</option><option value="30">30일</option></select></label>
+        </div>
+
+        <div class="forecast-option">
+          <label class="check-label"><input id="use-forecast" type="checkbox"><span>실제 단기예보 반영</span></label>
+          <p>선택하면 비교 기간이 4일로 바뀌고, 주소를 카카오 좌표 검색과 기상청 예보에 사용합니다.</p>
+          <div id="forecast-address-field" hidden>
+            <label>매장 주소<input id="store-address" maxlength="200" autocomplete="street-address" placeholder="도로명 또는 지번 주소"></label>
+          </div>
+        </div>
+
+        <div class="scenario-heading">
+          <div><span class="field-label">비교할 대안</span><p>현재 가격은 자동으로 함께 계산합니다.</p></div>
+          <button class="text-button" type="button" id="add-scenario">+ 대안 추가</button>
+        </div>
+        <div class="scenario-list" id="scenario-list"></div>
+
+        <details class="advanced-options">
+          <summary>계산 설정</summary>
+          <div class="form-grid compact-grid">
+            <label>Monte Carlo 반복<input id="price-simulations" type="number" min="100" max="50000" step="100" value="5000"></label>
+            <label>재현 seed<input id="price-seed" type="number" min="0" max="4294967295" value="42"></label>
+          </div>
+        </details>
+
+        <button class="primary-button" id="price-submit" type="submit"><span>전략 비교하기</span><span aria-hidden="true">→</span></button>
+        <p class="form-message" id="price-message" role="alert"></p>
+      </form>
+
+      <section class="result-panel" aria-labelledby="price-result-title">
+        <div class="panel-heading result-heading">
+          <span class="step-number">02</span>
+          <div><p class="section-kicker">계산 결과</p><h2 id="price-result-title">의사결정 요약</h2></div>
+          <span class="decision-badge is-idle" id="price-decision">계산 전</span>
+        </div>
+
+        <div class="empty-result" id="price-empty">
+          <p class="empty-index">01—03</p>
+          <h3>비교할 가격을 입력하세요.</h3>
+          <ol><li>기준 수요를 계산하고</li><li>불확실성을 5,000회 반영한 뒤</li><li>기대이익과 하방 위험을 함께 보여줍니다.</li></ol>
+        </div>
+
+        <div class="result-content" id="price-result" hidden>
+          <p class="recommendation-name" id="price-recommendation-name"></p>
+          <p class="recommendation-reason" id="price-recommendation-reason"></p>
+          <p class="context-line" id="price-weather-context"></p>
+          <div class="metric-grid">
+            <div class="metric-primary"><span>기대 기여이익 변화</span><strong id="price-profit-delta">—</strong></div>
+            <div><span>80% 예상 범위</span><strong id="price-profit-range">—</strong></div>
+            <div><span>개선확률</span><strong id="price-success">—</strong></div>
+            <div><span>근거 품질</span><strong id="price-confidence">—</strong></div>
+          </div>
+          <div class="comparison-block">
+            <div class="result-subheading"><h3>전략별 기여이익</h3><span>막대는 기대값 기준</span></div>
+            <div class="bar-chart" id="price-chart"></div>
+          </div>
+          <aside class="evidence-note"><span>해석 기준</span><p id="price-evidence"></p></aside>
+        </div>
+      </section>
+    </section>
+
+    <section class="simulator" id="bundle-panel" role="tabpanel" aria-labelledby="bundle-tab" hidden>
+      <form class="control-panel" id="bundle-form">
+        <div class="panel-heading">
+          <span class="step-number">01</span>
+          <div><p class="section-kicker">가정 입력</p><h2>세트 전략 만들기</h2></div>
+        </div>
+        <label>전략 이름<input id="bundle-name" value="치킨마요 · 콜라 세트" maxlength="50" required></label>
+        <div class="form-grid compact-grid">
+          <label>세트 가격<input id="bundle-price" type="number" min="1000" max="100000" step="100" value="10000" required><small>원</small></label>
+          <label>비교 기간<select id="bundle-horizon"><option value="7">7일</option><option value="14" selected>14일</option><option value="30">30일</option></select></label>
+        </div>
+        <div class="rate-grid">
+          <label>단품 고객 전환율<input id="take-rate" type="number" min="0" max="100" step="1" value="30"><small>%</small></label>
+          <label>기존 동시구매 전환율<input id="copurchase-rate" type="number" min="0" max="100" step="1" value="55"><small>%</small></label>
+          <label>신규 수요율<input id="incremental-rate" type="number" min="0" max="100" step="1" value="10"><small>%</small></label>
+          <label>다른 메뉴 잠식률<input id="cannibalization-rate" type="number" min="0" max="100" step="1" value="2"><small>%</small></label>
+        </div>
+        <p class="assumption-warning">네 비율은 아직 관측값이 아닌 실험 가정입니다. 근거 품질은 보수적으로 제한됩니다.</p>
+        <button class="primary-button" id="bundle-submit" type="submit"><span>세트 효과 계산하기</span><span aria-hidden="true">→</span></button>
+        <p class="form-message" id="bundle-message" role="alert"></p>
+      </form>
+
+      <section class="result-panel" aria-labelledby="bundle-result-title">
+        <div class="panel-heading result-heading">
+          <span class="step-number">02</span>
+          <div><p class="section-kicker">계산 결과</p><h2 id="bundle-result-title">세트 판단 요약</h2></div>
+          <span class="decision-badge is-idle" id="bundle-decision">계산 전</span>
+        </div>
+        <div class="empty-result" id="bundle-empty">
+          <p class="empty-index">TAKE RATE</p>
+          <h3>전환과 잠식 가정을 조정하세요.</h3>
+          <p>예상 이익이 높더라도 근거가 가정뿐이면 작은 실험부터 권합니다.</p>
+        </div>
+        <div class="result-content" id="bundle-result" hidden>
+          <p class="recommendation-name" id="bundle-recommendation-name"></p>
+          <p class="recommendation-reason" id="bundle-recommendation-reason"></p>
+          <div class="metric-grid">
+            <div class="metric-primary"><span>기대 기여이익 변화</span><strong id="bundle-profit-delta">—</strong></div>
+            <div><span>80% 예상 범위</span><strong id="bundle-profit-range">—</strong></div>
+            <div><span>개선확률</span><strong id="bundle-success">—</strong></div>
+            <div><span>근거 품질</span><strong id="bundle-confidence">—</strong></div>
+          </div>
+          <div class="flow-summary" id="bundle-orders"></div>
+          <aside class="evidence-note"><span>해석 기준</span><p id="bundle-evidence"></p></aside>
+        </div>
+      </section>
+    </section>
+
+    <section class="simulator" id="feedback-panel" role="tabpanel" aria-labelledby="feedback-tab" hidden>
+      <div class="control-panel">
+        <div class="panel-heading">
+          <span class="step-number">01</span>
+          <div><p class="section-kicker">예측 보존</p><h2>실험 계획 저장하기</h2></div>
+        </div>
+
+        <form id="feedback-plan-form">
+          <p class="assumption-warning" id="feedback-no-prediction">먼저 가격·할인 탭에서 전략을 계산하세요. 실행 전 예측 분포를 그대로 저장합니다.</p>
+          <div class="prediction-card" id="feedback-prediction" hidden>
+            <span>저장할 예측</span>
+            <strong id="feedback-strategy">—</strong>
+            <p id="feedback-prediction-copy"></p>
+          </div>
+          <label>실험 이름<input id="feedback-name" maxlength="80" required disabled></label>
+          <div class="form-grid compact-grid feedback-dates">
+            <label>시작일<input id="feedback-start" type="date" required disabled></label>
+            <label>종료일<input id="feedback-end" type="date" required disabled></label>
+          </div>
+          <button class="primary-button" id="feedback-plan-submit" type="submit" disabled><span>실험 계획 저장하기</span><span aria-hidden="true">→</span></button>
+          <p class="form-message" id="feedback-plan-message" role="alert"></p>
+        </form>
+
+        <div class="feedback-divider"><span>실험 종료 후</span></div>
+
+        <form id="feedback-form">
+          <label>완료할 실험
+            <select id="feedback-pending" disabled><option value="">저장된 계획 없음</option></select>
+          </label>
+          <div class="pending-card" id="feedback-pending-card" hidden></div>
+          <label>기준선 산정 방식
+            <select id="feedback-baseline-method" disabled>
+              <option value="matched_period">비슷한 이전 기간</option>
+              <option value="parallel_control">병행 대조군</option>
+            </select>
+          </label>
+          <div class="form-grid feedback-actual-grid">
+            <label>실제 판매량<input id="feedback-units" type="number" min="0" step="1" required disabled><small>개</small></label>
+            <label>실제 기여이익<input id="feedback-profit" type="number" step="1" required disabled><small>원</small></label>
+            <label>기준선 기여이익<input id="feedback-baseline-profit" type="number" step="1" required disabled><small>원</small></label>
+          </div>
+          <p class="field-help">기준선은 같은 기간의 대조군 또는 날씨·요일이 비슷한 이전 기간 합계입니다.</p>
+          <button class="primary-button" id="feedback-submit" type="submit" disabled><span>실제 결과 기록하기</span><span aria-hidden="true">→</span></button>
+          <p class="form-message" id="feedback-message" role="alert"></p>
+        </form>
+      </div>
+
+      <section class="result-panel" aria-labelledby="feedback-result-title">
+        <div class="panel-heading result-heading">
+          <span class="step-number">02</span>
+          <div><p class="section-kicker">보정 상태</p><h2 id="feedback-result-title">누적 실험 평가</h2></div>
+          <span class="decision-badge is-idle" id="feedback-count">0건</span>
+        </div>
+        <div class="empty-result" id="feedback-empty">
+          <p class="empty-index">PREDICT → OBSERVE</p>
+          <h3>실제 결과가 쌓이면 예측 품질을 확인합니다.</h3>
+          <p>한 건의 결과로 모델을 자동 변경하지 않고, 오차와 예측 구간 포함률을 먼저 봅니다.</p>
+        </div>
+        <div class="result-content" id="feedback-result" hidden>
+          <p class="recommendation-name" id="feedback-summary-title">누적 보정 상태</p>
+          <p class="recommendation-reason" id="feedback-last-result"></p>
+          <div class="metric-grid">
+            <div class="metric-primary"><span>기록된 실험</span><strong id="feedback-records">—</strong></div>
+            <div><span>이익 변화 평균 절대 오차</span><strong id="feedback-delta-mae">—</strong></div>
+            <div><span>이익 변화 80% 구간 포함률</span><strong id="feedback-coverage">—</strong></div>
+            <div><span>이익 개선 방향 정확도</span><strong id="feedback-direction">—</strong></div>
+          </div>
+          <aside class="evidence-note"><span>해석 기준</span><p>실험 수가 적을 때 비율은 크게 흔들립니다. 일관된 편향과 구간 포함률을 확인한 뒤 모델 보정을 결정하세요.</p></aside>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <footer><span>MarginCast</span><p>숫자는 계산 엔진이 만들고, 판단 근거는 투명하게 보여줍니다.</p></footer>
+
+  <template id="scenario-template">
+    <fieldset class="scenario-row">
+      <legend class="visually-hidden">가격 대안</legend>
+      <label>이름<input class="scenario-name" maxlength="50" required></label>
+      <label>정가<input class="scenario-price" type="number" min="1000" max="100000" step="100" required><small>원</small></label>
+      <label>할인<input class="scenario-discount" type="number" min="0" step="100" value="0" required><small>원</small></label>
+      <button class="remove-button" type="button" aria-label="이 대안 삭제">×</button>
+    </fieldset>
+  </template>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>
