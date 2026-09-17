@@ -102,6 +102,25 @@ class ExperimentFeedbackTests(unittest.TestCase):
         self.assertEqual(profit_delta["p80_coverage"], 1.0)
         self.assertEqual(profit_delta["direction_accuracy"], 1.0)
 
+    def test_single_record_summary_detects_interval_miss_and_wrong_direction(self):
+        self.store.record(
+            feedback_payload(
+                actual_units=80,
+                actual_profit=550_000,
+                baseline_profit=570_000,
+            )
+        )
+
+        summary = self.store.summary("M01")
+
+        self.assertEqual(summary["record_count"], 1)
+        self.assertEqual(summary["calibration"]["units"]["mean_absolute_error"], 20.0)
+        self.assertEqual(summary["calibration"]["units"]["p80_coverage"], 0.0)
+        profit_delta = summary["calibration"]["profit_delta"]
+        self.assertEqual(profit_delta["mean_absolute_error"], 70_000.0)
+        self.assertEqual(profit_delta["p80_coverage"], 0.0)
+        self.assertEqual(profit_delta["direction_accuracy"], 0.0)
+
     def test_period_must_match_prediction_horizon(self):
         payload = feedback_payload()
         payload["end_date"] = "2026-09-19"
@@ -185,6 +204,37 @@ class ExperimentFeedbackTests(unittest.TestCase):
         )
         self.assertEqual(quality["label"], "MEDIUM")
         self.assertEqual(quality["record_count"], 2)
+
+    def test_summary_keeps_quality_versions_and_fingerprints_separate(self):
+        self.store.record(feedback_payload())
+        next_version = feedback_payload(name="v2 기준 실험")
+        next_version["decision_context"]["evidence_quality"].update(
+            {
+                "version": "heuristic-v2",
+                "formula_fingerprint": "2" * 64,
+                "label": "HIGH",
+                "score": 82.0,
+            }
+        )
+        self.store.record(next_version)
+
+        quality_groups = self.store.summary("M01")["evidence_quality_calibration"]
+
+        self.assertEqual(len(quality_groups), 2)
+        self.assertEqual(
+            {
+                (group["version"], group["formula_fingerprint"], group["label"])
+                for group in quality_groups
+            },
+            {
+                (
+                    "heuristic-v1",
+                    EVIDENCE_QUALITY_POLICY_FINGERPRINT,
+                    "MEDIUM",
+                ),
+                ("heuristic-v2", "2" * 64, "HIGH"),
+            },
+        )
 
     def test_corrupt_store_has_stable_error(self):
         self.path.write_text("{", encoding="utf-8")

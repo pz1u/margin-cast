@@ -9,6 +9,10 @@ from urllib.parse import urlsplit
 
 from src.agent_tool_contracts import error_result, execute_tool
 from src.decision_service import DecisionServiceError, MarginCastDecisionService, SERVICE_VERSION
+from src.evidence_quality import (
+    EVIDENCE_QUALITY_POLICY_FINGERPRINT,
+    EVIDENCE_QUALITY_VERSION,
+)
 from src.experiment_feedback import ExperimentFeedbackError, ExperimentFeedbackStore
 from src.forecast_decision_service import ForecastDecisionError, ForecastDecisionService
 
@@ -83,6 +87,10 @@ def dispatch_api(
             "status": "ok",
             "service": "MarginCast HTTP API",
             "version": SERVICE_VERSION,
+            "evidence_quality": {
+                "version": EVIDENCE_QUALITY_VERSION,
+                "formula_fingerprint": EVIDENCE_QUALITY_POLICY_FINGERPRINT,
+            },
         }
 
     if path == FEEDBACK_ROUTE:

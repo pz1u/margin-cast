@@ -66,6 +66,8 @@ class HttpApiTests(unittest.TestCase):
         )
         self.assertEqual(health_status, 200)
         self.assertEqual(health["service"], "MarginCast HTTP API")
+        self.assertEqual(health["evidence_quality"]["version"], "heuristic-v1")
+        self.assertEqual(len(health["evidence_quality"]["formula_fingerprint"]), 64)
         self.assertEqual(capability_status, 200)
         self.assertEqual(capabilities["supported_menus"][0]["menu_id"], "M01")
 

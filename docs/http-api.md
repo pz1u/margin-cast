@@ -23,7 +23,7 @@
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
-| `GET` | `/api/health` | 서버 버전과 실행 상태 |
+| `GET` | `/api/health` | 서버 버전, 실행 상태와 로딩된 근거 품질 버전·지문 |
 | `GET` | `/api/capabilities` | 지원 메뉴, 데이터 범위, 입력 한도 |
 | `POST` | `/api/strategies/price` | 가격·할인 전략 비교 |
 | `POST` | `/api/strategies/price/forecast` | 매장 주소의 실제 단기예보를 반영한 가격·할인 비교 |
