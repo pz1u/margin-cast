@@ -2,7 +2,7 @@
 
 ## 1. 문서 상태
 
-- 상태: 구현 전 계약 확정안 v1.1
+- 상태: B단계 최소 Mock Runtime 구현 완료
 - 대상: MarginCast Agent v1
 - 구현 주도: 사용자
 - 지원: Codex가 계산 도구 연결, 코드 리뷰, 디버깅과 평가를 지원
@@ -397,27 +397,19 @@ Response Policy가 해당 응답을 거부해야 한다.
 ## 15. 제안 코드 구조
 
 ```text
-src/agent/
-├── __init__.py
-├── runtime.py            # LLM 요청과 Tool Call 반복
-├── system_prompt.py      # 버전이 있는 시스템 프롬프트
-├── tool_registry.py      # TOOL_SCHEMAS 등록과 execute_tool 연결
-├── conversation_state.py # 세션 상태와 필수 입력 관리
-├── response_policy.py    # ToolResult 고정, AgentResponse 구성과 최종 검증
-└── audit_log.py          # 민감값을 제외한 추천 감사 로그
+src/
+├── agent_schemas.py       # Provider와 Runtime의 공통 데이터 계약
+├── llm_provider.py        # 공급자 독립 Protocol
+├── agent_runtime.py       # B단계 단일 Tool Call 실행
+├── mock_llm_provider.py   # B단계 두 응답 Mock
+└── agent_tool_contracts.py # TOOL_SCHEMAS와 execute_tool
 
-tests/agent/
-├── test_mock_runtime.py
-├── test_tool_routing.py
-├── test_response_policy.py
-├── test_provider_invariance.py
-├── test_weather_claims.py
-├── test_data_provenance.py
-└── fixtures/
+tests/
+└── test_agent_runtime.py
 ```
 
-초기에는 `runtime.py`의 단일 Tool Call 반복으로 시작한다. 모델 공급자 교체나 웹 연결을 위해
-도구 레지스트리와 대화 상태만 분리하고, 불필요한 프레임워크 추상화는 추가하지 않는다.
+B단계는 위 파일만으로 가격 Tool Call 한 번과 후속 Provider 응답까지 실행한다. 대화 상태,
+Response Policy와 감사 로그는 해당 단계에서 실제로 필요할 때 추가한다.
 
 ## 16. 구현 단계
 
@@ -427,7 +419,7 @@ A단계를 확장 설계 단계로 사용하지 않는다. Mock Runtime 한 건�
 | 단계 | 작업 | 완료 조건 |
 |---|---|---|
 | A | Tool 계약 최소 보강 | `execution_defaults`, 위치 입력 3형식, Bundle 숫자 출처, 날씨 해석 계약 확정 — 완료 |
-| B | Mock LLM Agent Runtime | 가격 질문 한 건이 Mock Provider → Tool Call → ToolResult까지 완료 |
+| B | Mock LLM Agent Runtime | 가격 질문 한 건이 Mock Provider → Tool Call → ToolResult까지 완료 — 완료 |
 | C | ToolResult → AgentResponse 정책 | 핵심 사실 고정, Decision 일치, 필수 고지 검증 후 PASS |
 | D | 오류·Missing Input | 출처 없는 숫자를 만들지 않고 질문 또는 구조화된 오류 반환 |
 | E | 실제 LLM Provider | Mock과 같은 Provider Interface로 실제 모델 한 개 연결 |

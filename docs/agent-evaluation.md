@@ -5,10 +5,10 @@ Agent 본체 구현 뒤 다음 사례를 회귀 테스트한다. 숫자의 정�
 
 ## 현재 자동화 상태
 
-이 문서의 사례는 Agent 본체용 인수 조건이다. 현재 Agent 런타임과 최종 자연어 응답 생성기가
-없으므로 아래 Agent 사례 자체는 기존 계산 엔진 테스트 수에 포함되지 않는다. 지금 자동화된 범위는
-`data_provenance`, 미보정 `evidence_quality`, 날씨 인과 검증 플래그, 미지원 메뉴의 다음 행동처럼
-Agent가 받아야 할 구조화된 도구 결과까지다.
+이 문서의 사례는 Agent 본체용 인수 조건이다. 현재 가격 질문 한 건의 Mock Runtime 흐름은
+자동화됐지만 최종 자연어 응답 정책은 아직 없다. 지금 자동화된 범위는 Mock Tool Call과 원본
+ToolResult 보존, `data_provenance`, 미보정 `evidence_quality`, 날씨 인과 검증 플래그,
+미지원 메뉴의 다음 행동처럼 Agent가 받아야 할 구조화된 도구 결과까지다.
 
 특히 `WEATHER-01`의 최종 자연어 표현 검사는 Agent 본체 구현과 함께 추가한다. 그 전에는
 `menu_specific_causal_effect_validated=false` 계약의 자동 테스트가 하위 방어선이고, 이 문서는

@@ -164,8 +164,8 @@ Decision Engine의 데이터 출처, 근거 품질 산식과 검증 계획은
 4. 함수 호출을 `execute_tool`로 전달
 5. 도구 결과를 사용자가 이해할 수 있는 경영 언어로 설명
 
-A단계 Tool Contract 보강은 완료됐다. 다음 단계에서는 가격 질문 한 건의 Mock LLM 세로 흐름만
-만들며, 추가 설계를 위해 범위를 확대하지 않는다.
+A단계 Tool Contract와 B단계 가격 질문 한 건의 Mock LLM 세로 흐름까지 완료됐다. 다음 단계에서는
+보존된 ToolResult에 Response Policy를 적용하며, B단계 Runtime의 책임을 확대하지 않는다.
 
 Agent 본체의 필수 회귀 사례는 [MarginCast Agent MVP 평가 시나리오](agent-evaluation.md)에
 정리했다.
