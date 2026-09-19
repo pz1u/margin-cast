@@ -1,8 +1,8 @@
 # MarginCast HTTP API
 
-`src.http_api`는 MarginCast 계산 엔진과 정적 웹사이트를 Python 표준 라이브러리 HTTP 서버로
-제공한다. Agent나 LLM을 실행하지 않으며 `src.agent_tool_contracts`의 검증된 도구 계약을
-그대로 호출한다.
+`src.http_api`는 MarginCast 계산 엔진, Agent 대화 경계와 정적 웹사이트를 Python 표준 라이브러리
+HTTP 서버로 제공한다. Agent도 계산 구현을 직접 호출하지 않고 `src.agent_tool_contracts`의
+검증된 Tool Registry와 `execute_tool()` 경계를 사용한다.
 
 ## 실행
 
@@ -24,6 +24,7 @@
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | `GET` | `/api/health` | 서버 버전, 실행 상태와 로딩된 근거 품질 버전·지문 |
+| `POST` | `/api/agent/chat` | 가격 질문 한 건 또는 동일 세션의 부족 입력 후속 대화 |
 | `GET` | `/api/capabilities` | 지원 메뉴, 데이터 범위, 입력 한도 |
 | `POST` | `/api/strategies/price` | 가격·할인 전략 비교 |
 | `POST` | `/api/strategies/price/forecast` | 매장 주소의 실제 단기예보를 반영한 가격·할인 비교 |
@@ -66,3 +67,81 @@ WGS84 좌표로 변환하고 기상청 단기예보를 조회한 뒤 계산 엔�
 실험 피드백은 반드시 계획을 먼저 저장한 뒤 해당 `feedback_id`에 실제 결과를 연결한다.
 계획에는 당시 엔진·데이터·날씨·근거 품질 버전을 함께 저장한다.
 요청 형식과 보정 지표는 [실험 피드백과 모델 보정 근거](experiment-feedback.md)에 정리했다.
+
+## Agent 대화
+
+요청은 현재 메시지와 선택적인 세션 ID만 받는다. `session_id`를 생략하면 서버가 생성해 응답한다.
+
+```json
+{
+  "session_id": "demo-price-1",
+  "message": "치킨마요를 9,500원으로 올리면 어때?"
+}
+```
+
+Policy를 통과하면 `COMPLETED`이며, UI 핵심 수치는 LLM 문장이 아닌 `facts`에서 읽는다.
+전체 ToolResult와 System Prompt는 반환하지 않는다.
+
+```json
+{
+  "session_id": "demo-price-1",
+  "status": "COMPLETED",
+  "execution_id": "...",
+  "recommendation_id": "...",
+  "facts": {
+    "expected_units": {"value": 604.8, "source": "ENGINE", "source_ref": "..."},
+    "engine_decision": {"value": "EXPERIMENT", "source": "ENGINE", "source_ref": "..."}
+  },
+  "presentation": {
+    "explanation": "정성적 설명",
+    "next_action": "정성적 다음 행동"
+  },
+  "notices": ["합성 데이터 및 근거 품질 고지"]
+}
+```
+
+가격이 없으면 HTTP 200과 `NEEDS_INPUT`을 반환한다.
+
+```json
+{
+  "session_id": "demo-price-2",
+  "message": "치킨마요 가격 올리면 어때?"
+}
+```
+
+```json
+{
+  "session_id": "demo-price-2",
+  "status": "NEEDS_INPUT",
+  "execution_id": "...",
+  "recommendation_id": null,
+  "question": "변경할 가격은 얼마로 생각하고 계신가요?",
+  "missing_input": {"fields": ["list_price"], "source_requirement": ["USER"]}
+}
+```
+
+같은 `session_id`로 `{"message":"9500원"}`을 보내면 저장된 메뉴 문맥과 결합해 계산한다.
+`REJECTED`는 Policy 위반 코드와 `execution_id`만 제공하며 LLM 설명을 노출하지 않는다.
+예상하지 못한 `ERROR`는 일반 메시지만 반환하고 내부 예외나 stack trace를 숨긴다.
+
+서버 메모리 세션에는 capabilities, 선택 메뉴, 작성 중인 가격 시나리오, pending question,
+`recommendation_id`와 실험 연결용 추천 스냅샷만 저장한다. 전체 대화 원문은 저장하지 않는다.
+서버 재시작 시 세션은 초기화된다. G1은 단일 프로세스·단일 worker 실행만 지원한다.
+
+## Ollama 준비와 warm-up
+
+코드는 모델명을 고정하지 않는다. 로컬 개발에서는 G.0에서 확인한 `qwen3:1.7b`를 사용할 수 있고,
+`qwen3:4b`도 같은 Provider 계약으로 계속 지원한다.
+
+```powershell
+ollama serve
+ollama pull qwen3:1.7b
+$env:OLLAMA_BASE_URL="http://localhost:11434"
+$env:OLLAMA_MODEL="qwen3:1.7b"
+python -m src.generate_data
+python -m src.prepare_analysis_data
+python -m src.http_api
+```
+
+실제 데모 전에 위 Agent 요청을 한 번 보내 모델을 로드하고 `ollama ps`에서 warm 상태를 확인한다.
+startup 과정은 모델 호출이나 사업 Tool 실행을 자동으로 수행하지 않는다.

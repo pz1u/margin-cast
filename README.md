@@ -173,8 +173,9 @@ Agent 본체의 역할, 대화 흐름, 응답 계약과 구현 순서는
 
 ## HTTP API
 
-Agent와 웹사이트는 같은 계산 경계를 HTTP로 사용할 수 있습니다. 서버는 LLM을 실행하지 않고
-기능 조회, 가격·할인 비교와 세트 시뮬레이션만 제공합니다.
+Agent와 웹사이트는 같은 계산 경계를 HTTP로 사용할 수 있습니다. G1에서는
+`POST /api/agent/chat`이 Ollama Provider, 기존 Agent Runtime, Tool Registry와 Response Policy를
+연결합니다. 가격 질문 한 흐름과 같은 세션의 Missing Input 후속 응답을 지원합니다.
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.http_api

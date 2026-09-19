@@ -457,6 +457,11 @@ G.0 실행성 점검에서 모든 Runtime 실행에 `execution_id`를 추가했�
 `recommendation_id`를 가지며, REJECTED 실행은 `execution_id`로 Policy 위반과 지연시간을 추적한다.
 Web 경계는 `COMPLETED`, `NEEDS_INPUT`, `REJECTED`, `ERROR` 네 상태를 사용한다.
 
+G1에서는 `POST /api/agent/chat`으로 가격 질문 한 흐름을 노출한다. 서버 메모리 세션에는 구조화된
+capabilities, 선택 메뉴, draft scenario, pending question과 추천 스냅샷만 저장한다. 같은 세션의
+두 번째 입력으로 부족한 가격을 채울 수 있으며 전체 대화 원문과 ToolResult는 HTTP 응답에 노출하지
+않는다. 채팅 UI는 G2 범위로 남긴다.
+
 첫 세로 흐름은 `가격 질문 → Mock LLM → 가격 도구 → Response Policy → AgentResponse` 하나로
 제한한다. 이 흐름이 통과한 뒤 할인·날씨·세트·피드백을 같은 계약에 연결한다.
 

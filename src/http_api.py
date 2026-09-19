@@ -1,12 +1,15 @@
 """MarginCast 계산 엔진과 정적 웹사이트를 같은 HTTP 서버로 제공한다."""
 
 import argparse
+from functools import partial
 import json
 import mimetypes
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from src.agent_audit import AgentAuditStore
+from src.agent_chat_service import AgentChatRequestError, AgentChatService
 from src.agent_tool_contracts import error_result, execute_tool
 from src.decision_service import DecisionServiceError, MarginCastDecisionService, SERVICE_VERSION
 from src.evidence_quality import (
@@ -15,6 +18,7 @@ from src.evidence_quality import (
 )
 from src.experiment_feedback import ExperimentFeedbackError, ExperimentFeedbackStore
 from src.forecast_decision_service import ForecastDecisionError, ForecastDecisionService
+from src.ollama_provider import OllamaProvider
 
 
 MAX_BODY_BYTES = 64 * 1024
@@ -27,6 +31,7 @@ FORECAST_PRICE_ROUTE = "/api/strategies/price/forecast"
 FEEDBACK_ROUTE = "/api/experiments/feedback"
 FEEDBACK_PLAN_ROUTE = "/api/experiments/plans"
 FEEDBACK_SUMMARY_ROUTE = "/api/experiments/feedback/summary"
+AGENT_CHAT_ROUTE = "/api/agent/chat"
 ERROR_STATUS = {
     "NOT_FOUND": 404,
     "METHOD_NOT_ALLOWED": 405,
@@ -76,9 +81,59 @@ def dispatch_api(
     service=None,
     forecast_service=None,
     feedback_store=None,
+    agent_chat_service=None,
 ):
     """HTTP 입력을 도구 계약으로 전달하고 상태 코드와 JSON 객체를 반환한다."""
     method = method.upper()
+    if path == AGENT_CHAT_ROUTE:
+        if method != "POST":
+            payload = error_result("METHOD_NOT_ALLOWED", "POST 요청만 지원합니다.")
+            return api_status(payload), payload
+        arguments = _decode_json(body)
+        if isinstance(arguments, dict) and arguments.get("status") == "error":
+            return api_status(arguments), arguments
+        allowed = {"session_id", "message"}
+        unknown = sorted(set(arguments) - allowed)
+        if unknown or "message" not in arguments:
+            payload = error_result(
+                "INVALID_ARGUMENTS",
+                "Agent 대화 요청의 필드를 확인하세요.",
+                {
+                    "unknown_fields": unknown,
+                    "missing_fields": (
+                        [] if "message" in arguments else ["message"]
+                    ),
+                },
+            )
+            return api_status(payload), payload
+        if agent_chat_service is None:
+            return 503, {
+                "status": "ERROR",
+                "execution_id": None,
+                "recommendation_id": None,
+                "error": {
+                    "code": "AGENT_UNAVAILABLE",
+                    "message": "Agent 서비스를 사용할 수 없습니다.",
+                    "retryable": True,
+                },
+            }
+        try:
+            return agent_chat_service.chat(
+                arguments.get("session_id"),
+                arguments["message"],
+            )
+        except AgentChatRequestError as error:
+            return 400, {
+                "status": "ERROR",
+                "execution_id": None,
+                "recommendation_id": None,
+                "error": {
+                    "code": error.code,
+                    "message": error.message,
+                    "retryable": False,
+                },
+            }
+
     if path == "/api/health":
         if method != "GET":
             payload = error_result("METHOD_NOT_ALLOWED", "GET 요청만 지원합니다.")
@@ -225,7 +280,13 @@ def dispatch_api(
     return api_status(payload), payload
 
 
-def _handler_class(service, forecast_service, feedback_store, static_dir):
+def _handler_class(
+    service,
+    forecast_service,
+    feedback_store,
+    agent_chat_service,
+    static_dir,
+):
     static_dir = Path(static_dir).resolve()
 
     class MarginCastRequestHandler(BaseHTTPRequestHandler):
@@ -250,7 +311,13 @@ def _handler_class(service, forecast_service, feedback_store, static_dir):
 
         def _send_api(self, method, path, body=None):
             status, payload = dispatch_api(
-                method, path, body, service, forecast_service, feedback_store
+                method,
+                path,
+                body,
+                service,
+                forecast_service,
+                feedback_store,
+                agent_chat_service,
             )
             self._send_json(status, payload)
 
@@ -309,15 +376,37 @@ def create_server(
     service=None,
     static_dir=None,
     feedback_store=None,
+    agent_chat_service=None,
 ):
     root = Path(__file__).resolve().parents[1]
     service = service or MarginCastDecisionService()
     forecast_service = ForecastDecisionService(service)
     feedback_store = feedback_store or ExperimentFeedbackStore()
+    agent_chat_service = agent_chat_service or AgentChatService(
+        provider_factory=OllamaProvider,
+        tool_executor=partial(
+            execute_tool,
+            service=service,
+            forecast_service=forecast_service,
+            feedback_store=feedback_store,
+        ),
+        capabilities_loader=lambda: execute_tool(
+            "get_margincast_capabilities",
+            {},
+            service=service,
+        ),
+        audit_store=AgentAuditStore(),
+    )
     static_dir = static_dir or root / "web"
-    return ThreadingHTTPServer(
+    return HTTPServer(
         (host, port),
-        _handler_class(service, forecast_service, feedback_store, static_dir),
+        _handler_class(
+            service,
+            forecast_service,
+            feedback_store,
+            agent_chat_service,
+            static_dir,
+        ),
     )
 
 
