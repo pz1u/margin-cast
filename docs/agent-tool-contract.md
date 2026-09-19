@@ -116,6 +116,21 @@ Agent용 도구는 `location` 객체로 다음 세 위치 입력 형식 중 정�
 Mock Runtime은 성공 결과만 Provider의 후속 설명과 Response Policy에 전달한다. 오류 결과는 즉시
 `AgentResultRouter`로 보내 부족 입력 또는 공통 Agent 오류로 변환한다.
 
+E단계의 `OllamaProvider`도 같은 `LLMProvider.generate(messages, tools) -> LLMResponse` 계약을
+사용한다. 공통 `TOOL_SCHEMAS`를 Ollama 함수 도구 형식으로 바꾸고, Ollama 응답만 공통 `ToolCall`과
+`LLMResponse`로 변환한다. 계산 서비스와 `execute_tool`은 호출하지 않는다. Tool 실행 책임은 계속
+`AgentRuntime`에 있다.
+
+최종 Ollama 응답은 JSON Schema를 사용해 다음 세 필드로 제한한다.
+
+- `decision_claim`: `RECOMMEND`, `EXPERIMENT`, `HOLD` 중 하나
+- `explanation`: 숫자를 새로 만들지 않는 정성 설명
+- `next_action`: 숫자를 새로 만들지 않는 정성적 다음 행동
+
+사용자 확인값은 공통 `Message.context`의 Conversation State로 Provider에 전달한다. 모델이 필수
+Tool 인자를 빠뜨렸을 때 해당 값이 State에 있으면 `PROVIDER_INVALID_TOOL_CALL`이고, State에도
+없으면 사용자에게 묻는 `MissingInput`이다. 자동 재시도는 하지 않는다.
+
 ## 로컬 사전 검증
 
 에이전트 없이 동일한 경계를 CLI로 확인할 수 있다.
@@ -159,9 +174,20 @@ Mock Runtime은 성공 결과만 Provider의 후속 설명과 Response Policy에
 10. `menu_specific_causal_effect_validated=false`이면 특정 날씨가 판매량 증가·감소를 일으킨다고 단정하지 않는다.
 11. 미지원 메뉴에는 오류 세부정보의 `next_step`을 사용해 데이터 확보 경로를 안내한다.
 
-현재 설명문 안의 아라비아 숫자 탐지는 C/D단계 Mock 방어선이다. 실제 Provider 연결 시에는
-구조화된 설명 계약 또는 deterministic renderer로 대체하거나 보강한다. facts의 `source_ref`와
-`fact_provenance.ref`는 현재 둘 다 유지하며 Response Policy가 일치 여부를 검사한다.
+현재 설명문 안의 아라비아 숫자 탐지는 C/D단계 Mock 방어선으로 유지한다. E단계의 핵심 경계는
+ToolResult에서 고정한 facts, 구조화된 Ollama 최종 응답, Response Policy다. 한국어 숫자 파서는
+추가하지 않는다. facts의 `source_ref`와 `fact_provenance.ref`는 현재 둘 다 유지하며 Response
+Policy가 일치 여부를 검사한다.
+
+실제 로컬 서버 테스트는 기본 회귀 테스트에서 제외한다. Ollama 서버와 Tool Calling 지원 모델을
+준비한 뒤 다음처럼 명시적으로 실행한다.
+
+```powershell
+$env:OLLAMA_BASE_URL="http://localhost:11434"
+$env:OLLAMA_MODEL="<tool-calling-model>"
+$env:RUN_OLLAMA_INTEGRATION="1"
+python -m unittest tests.test_ollama_integration
+```
 
 Decision Engine의 데이터 출처, 근거 품질 산식과 검증 계획은
 [Decision Engine 데이터 출처와 판단 방법](decision-methodology.md)을 기준으로 한다.
@@ -175,7 +201,7 @@ Decision Engine의 데이터 출처, 근거 품질 산식과 검증 계획은
 5. 도구 결과를 사용자가 이해할 수 있는 경영 언어로 설명
 
 A단계 Tool Contract, B단계 Mock 세로 흐름, C단계 가격 Response Policy, D단계 Missing Input과
-도구 오류 분기까지 완료됐다. 실제 LLM Provider와 복구·재시도 정책은 아직 연결하지 않는다.
+도구 오류 분기, E단계 Ollama Provider까지 완료됐다. 복구·재시도 정책은 아직 연결하지 않는다.
 
 Agent 본체의 필수 회귀 사례는 [MarginCast Agent MVP 평가 시나리오](agent-evaluation.md)에
 정리했다.

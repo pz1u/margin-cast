@@ -399,6 +399,7 @@ class Message:
     tool_calls: tuple[ToolCall, ...] = ()
     tool_call_id: str | None = None
     tool_name: str | None = None
+    context: JsonObject = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.role, MessageRole):
@@ -412,6 +413,7 @@ class Message:
             _require_text(self.tool_call_id or "", "tool_call_id")
             _require_text(self.tool_name or "", "tool_name")
         object.__setattr__(self, "tool_calls", calls)
+        object.__setattr__(self, "context", _copy_object(self.context))
 
 
 @dataclass(frozen=True)
@@ -422,11 +424,14 @@ class LLMResponse:
     tool_calls: tuple[ToolCall, ...] = ()
     missing_input: MissingInput | None = None
     decision_claim: DecisionAction | None = None
+    next_action: str | None = None
 
     def __post_init__(self) -> None:
         calls = tuple(self.tool_calls)
         if self.text is not None and not isinstance(self.text, str):
             raise TypeError("text는 문자열 또는 None이어야 합니다.")
+        if self.next_action is not None:
+            _require_text(self.next_action, "next_action")
         decision_claim = self.decision_claim
         if decision_claim is not None and not isinstance(decision_claim, DecisionAction):
             decision_claim = DecisionAction(decision_claim)

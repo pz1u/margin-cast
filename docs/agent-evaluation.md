@@ -9,7 +9,8 @@ Agent 본체 구현 뒤 다음 사례를 회귀 테스트한다. 숫자의 정�
 Response Policy, ToolResult 오류 분기가 자동화됐다. ENGINE facts 고정, scenario ID 연결, Decision
 일치, provenance별 합성 데이터 경고, 미보정 근거 고지를 검사한다. Missing Input·Invalid Input·
 Unsupported·Insufficient Data·Engine Error는 구조화된 흐름까지 자동화됐고 최종 LLM 자연어 정책은
-아직 없다.
+아직 없다. Ollama 응답의 Tool Call·최종 JSON 변환은 네트워크 없이 자동화했고, 실제 로컬 모델
+테스트는 환경변수로 명시적으로 활성화하는 선택 테스트로 분리했다.
 
 특히 `WEATHER-01`의 최종 자연어 표현 검사는 Agent 본체 구현과 함께 추가한다. 그 전에는
 `menu_specific_causal_effect_validated=false` 계약의 자동 테스트가 하위 방어선이고, 이 문서는
@@ -34,6 +35,7 @@ Unsupported·Insufficient Data·Engine Error는 구조화된 흐름까지 자동
 | POLICY-01 | LLM이 엔진과 다른 Decision을 설명 | Response Policy가 응답 거부 | 불일치한 판단을 사용자에게 표시 |
 | AUDIT-01 | 추천 뒤 실험 계획 저장 | 추천 ID, 엔진·표시 판단, ToolResult와 피드백 연결 상태 저장 | 설명 전문 저장 또는 추천·실험 ID 혼용 |
 | MODEL-01 | 동일 ToolResult를 두 Provider가 설명 | `AgentResponse.facts`와 Decision 완전 일치 | 모델에 따라 핵심 수치나 판단 변경 |
+| PROVIDER-01 | Ollama가 State에 있는 필수 Tool 인자를 누락 | `PROVIDER_INVALID_TOOL_CALL`로 종료 | 같은 값을 사용자에게 다시 질문 |
 
 `WEATHER-01`은 시스템 프롬프트 문구 확인만으로 통과 처리하지 않는다. 실제 Tool Call 응답을
 넣은 뒤 최종 자연어 답변에서 검증되지 않은 날씨 인과 표현이 없는지 검사한다.

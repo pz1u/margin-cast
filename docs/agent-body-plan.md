@@ -2,7 +2,7 @@
 
 ## 1. 문서 상태
 
-- 상태: C단계 최소 Response Policy 구현 완료
+- 상태: E단계 Ollama Provider 연결 완료
 - 대상: MarginCast Agent v1
 - 구현 주도: 사용자
 - 지원: Codex가 계산 도구 연결, 코드 리뷰, 디버깅과 평가를 지원
@@ -385,10 +385,10 @@ ToolResult를 받은 직후 `status`를 확인한다. 성공 결과만 Response 
 않고 `INVALID_INPUT`으로 반환한다. 오류 응답에는 계산 facts와 Decision을 생성하지 않는다.
 
 C/D 단계의 아라비아 숫자 탐지는 Mock 설명이 ENGINE 밖의 숫자를 만들지 못하게 하는 임시
-방어선이다. 실제 LLM Provider 연결 단계에서는 구조화된 설명 계약 또는 deterministic renderer로
-대체하거나 보강한다. 현재 병렬로 유지하는 fact의 `source_ref`와 `fact_provenance.ref`는 Response
-Policy가 일치 여부를 검사한다. 두 표현의 통합은 실제 Provider 연결 전 리팩터링 후보이며 D단계에서
-구조를 변경하지 않는다.
+방어선이다. E단계 Ollama Provider는 최종 응답을 `decision_claim`, `explanation`, `next_action`의
+구조화된 JSON으로 제한한다. 향후 deterministic renderer로 보강할 수 있다. 현재 병렬로 유지하는
+fact의 `source_ref`와 `fact_provenance.ref`는 Response Policy가 일치 여부를 검사한다. 두 표현의
+통합은 Ollama E2E 안정화 뒤 리팩터링 후보로 남긴다.
 
 ## 14. 시스템 프롬프트 구성
 
@@ -410,6 +410,10 @@ Policy가 일치 여부를 검사한다. 두 표현의 통합은 실제 Provider
 `capabilities.execution_defaults`, 실험 숫자는 `USER`·`ENGINE`·실험 전용 `DEFAULT` 출처에서만
 가져온다.
 
+E단계 최소 프롬프트는 Agent 역할, Tool 사용, ENGINE Decision 유지, 성공확률과 근거 품질의 분리,
+합성 데이터 고지, 자유형 숫자 생성 금지만 포함한다. Ollama의 모델명과 서버 URL은 각각
+`OLLAMA_MODEL`, `OLLAMA_BASE_URL` 환경변수로 받는다.
+
 ## 15. 제안 코드 구조
 
 ```text
@@ -418,6 +422,7 @@ src/
 ├── llm_provider.py        # 공급자 독립 Protocol
 ├── agent_runtime.py       # B단계 단일 Tool Call 실행
 ├── mock_llm_provider.py   # B단계 두 응답 Mock
+├── ollama_provider.py     # E단계 Ollama HTTP·Tool·구조화 응답 변환
 ├── response_policy.py     # C단계 ENGINE facts와 Decision 검증
 ├── agent_result_router.py # D단계 성공·부족 입력·오류 분기
 └── agent_tool_contracts.py # TOOL_SCHEMAS와 execute_tool
@@ -425,7 +430,9 @@ src/
 tests/
 ├── test_agent_runtime.py
 ├── test_response_policy.py
-└── test_agent_error_flow.py
+├── test_agent_error_flow.py
+├── test_ollama_provider.py
+└── test_ollama_integration.py
 ```
 
 B단계는 위 파일만으로 가격 Tool Call 한 번과 후속 Provider 응답까지 실행한다. 대화 상태,
@@ -441,8 +448,8 @@ A단계를 확장 설계 단계로 사용하지 않는다. Mock Runtime 한 건�
 | A | Tool 계약 최소 보강 | `execution_defaults`, 위치 입력 3형식, Bundle 숫자 출처, 날씨 해석 계약 확정 — 완료 |
 | B | Mock LLM Agent Runtime | 가격 질문 한 건이 Mock Provider → Tool Call → ToolResult까지 완료 — 완료 |
 | C | ToolResult → AgentResponse 정책 | 핵심 사실 고정, Decision 일치, 필수 고지 검증 후 PASS — 완료 |
-| D | 오류·Missing Input | 출처 없는 숫자를 만들지 않고 질문 또는 구조화된 오류 반환 |
-| E | 실제 LLM Provider | Mock과 같은 Provider Interface로 실제 모델 한 개 연결 |
+| D | 오류·Missing Input | 출처 없는 숫자를 만들지 않고 질문 또는 구조화된 오류 반환 — 완료 |
+| E | 실제 LLM Provider | Mock과 같은 Provider Interface로 Ollama 모델 연결 — 완료 |
 | F | Feedback·Audit | 추천 ID, 구조화된 판단, 실험 계획과 실제 결과 연결 상태 보존 |
 | G | Web | UI가 설명문이 아니라 `AgentResponse.facts`로 핵심 수치와 Decision 표시 |
 

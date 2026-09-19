@@ -15,8 +15,10 @@ from .agent_schemas import (
     LLMResponse,
     Message,
     MessageRole,
+    MissingInput,
     ToolCall,
     ToolResult,
+    ValueSource,
 )
 from .agent_tool_contracts import TOOL_SCHEMAS, execute_tool
 from .llm_provider import LLMProvider
@@ -27,6 +29,26 @@ ToolExecutor = Callable[[str, JsonObject], JsonObject]
 
 class AgentRuntimeError(RuntimeError):
     """B단계 단일 호출 계약을 만족하지 않는 Provider 응답."""
+
+
+class ProviderInvalidToolCallError(AgentRuntimeError):
+    """Conversation State에 있는 필수 인자를 Provider가 누락한 경우."""
+
+    code = "PROVIDER_INVALID_TOOL_CALL"
+
+    def __init__(self, message: str, missing_fields: tuple[str, ...]) -> None:
+        super().__init__(message)
+        self.missing_fields = missing_fields
+
+
+class AgentMissingInputError(AgentRuntimeError):
+    """도구 호출 전에 사용자의 사업 입력이 실제로 부족한 경우."""
+
+    code = "MISSING_INPUT"
+
+    def __init__(self, missing_input: MissingInput) -> None:
+        super().__init__(missing_input.question)
+        self.missing_input = missing_input
 
 
 @dataclass(frozen=True)
@@ -54,7 +76,19 @@ class AgentRuntime:
         self.tools = tuple(deepcopy(tool) for tool in tools)
         self.tool_executor = tool_executor
 
-    def _validate_tool_call(self, tool_call: ToolCall) -> None:
+    @staticmethod
+    def _missing_input_question(fields: tuple[str, ...]) -> str:
+        if "menu_id" in fields:
+            return "분석할 메뉴를 알려주세요."
+        if "scenarios" in fields:
+            return "비교할 가격이나 할인 조건을 알려주세요."
+        return f"계산에 필요한 값({', '.join(fields)})을 알려주세요."
+
+    def _validate_tool_call(
+        self,
+        tool_call: ToolCall,
+        agent_input: AgentInput,
+    ) -> None:
         schema = next(
             (tool for tool in self.tools if tool.get("name") == tool_call.name),
             None,
@@ -69,6 +103,39 @@ class AgentRuntime:
             key=lambda error: tuple(str(item) for item in error.absolute_path),
         )
         if errors:
+            missing_fields = []
+            for error in errors:
+                if error.validator != "required":
+                    continue
+                required = error.validator_value
+                if not isinstance(required, list) or not isinstance(error.instance, dict):
+                    continue
+                prefix = ".".join(str(item) for item in error.absolute_path)
+                missing_fields.extend(
+                    f"{prefix}.{field_name}" if prefix else field_name
+                    for field_name in required
+                    if field_name not in error.instance
+                )
+            missing = tuple(dict.fromkeys(missing_fields))
+            if missing:
+                provided = tuple(
+                    field_name
+                    for field_name in missing
+                    if field_name in agent_input.business_inputs
+                )
+                if provided:
+                    raise ProviderInvalidToolCallError(
+                        "Provider가 Conversation State의 필수 Tool 인자를 누락했습니다.",
+                        provided,
+                    )
+                raise AgentMissingInputError(
+                    MissingInput(
+                        fields=missing,
+                        reason="도구 실행에 필요한 사용자 입력이 없습니다.",
+                        question=self._missing_input_question(missing),
+                        source_requirement=(ValueSource.USER,),
+                    )
+                )
             error = errors[0]
             path = ".".join(str(item) for item in error.absolute_path) or "arguments"
             raise AgentRuntimeError(f"ToolCall 인자가 계약과 다릅니다: {path}: {error.message}")
@@ -90,13 +157,19 @@ class AgentRuntime:
         if not isinstance(agent_input, AgentInput):
             raise TypeError("agent_input은 AgentInput이어야 합니다.")
 
-        messages = [Message(role=MessageRole.USER, content=agent_input.text)]
+        messages = [
+            Message(
+                role=MessageRole.USER,
+                content=agent_input.text,
+                context=agent_input.business_inputs,
+            )
+        ]
         first_response = self.provider.generate(tuple(messages), self.tools)
         if not isinstance(first_response, LLMResponse):
             raise AgentRuntimeError("Provider는 LLMResponse를 반환해야 합니다.")
 
         tool_call = self._require_single_tool_call(first_response)
-        self._validate_tool_call(tool_call)
+        self._validate_tool_call(tool_call, agent_input)
         messages.append(
             Message(
                 role=MessageRole.ASSISTANT,
