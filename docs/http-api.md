@@ -29,6 +29,12 @@ HTTP 서버로 제공한다. Agent도 계산 구현을 직접 호출하지 않�
 | `POST` | `/api/strategies/price` | 가격·할인 전략 비교 |
 | `POST` | `/api/strategies/price/forecast` | 매장 주소의 실제 단기예보를 반영한 가격·할인 비교 |
 | `POST` | `/api/strategies/bundle` | 세트 전략 시뮬레이션 |
+| `GET` | `/api/store/profile` | POS 연동 상태, 엔진 수수료(읽기 전용), 메뉴별 원가·원가율·분석 상태 |
+| `POST` | `/api/store/menus` | 새 메뉴 추가(메뉴명·카테고리·판매가·식재료 원가·판매 채널) |
+| `POST` | `/api/store/menus/cost` | 메뉴 식재료 원가 수정 또는 `reset`으로 POS 원가 복원 |
+| `POST` | `/api/store/menus/delete` | 직접 추가한 메뉴 삭제 |
+| `POST` | `/api/store/bundle/observation` | 선택한 주메뉴·구성 메뉴의 POS 관측값과 식별 불가 값 |
+| `POST` | `/api/store/bundle/simulate` | 주메뉴·구성 메뉴를 선택한 세트 시뮬레이션 |
 | `POST` | `/api/experiments/plans` | 실행 전 가격 실험의 예측 분포 저장 |
 | `GET` | `/api/experiments/plans` | 실제 결과 입력을 기다리는 실험 계획 조회 |
 | `POST` | `/api/experiments/feedback` | 저장한 계획에 실제 결과 연결 |
@@ -54,6 +60,24 @@ WGS84 좌표로 변환하고 기상청 단기예보를 조회한 뒤 계산 엔�
 `INSUFFICIENT_FORECAST` 오류를 반환한다. 응답의 `weather.applied_from`과 `applied_to`는 실제
 계산에 사용한 날짜 범위이며, `available_from`과 `available_to`는 조회된 전체 범위다. Agent 함수
 도구 계약에는 주소 필드를 추가하지 않았다.
+
+## 매장 설정과 유효 원가
+
+`/api/store/*`는 화면 전용 경로이며 Agent 도구 계약(`agent_tool_contracts`)은 바꾸지 않는다.
+`/api/strategies/bundle`은 기존처럼 `scenario`, `horizon_days`, `simulations`, `seed`만 받고
+치킨마요·콜라 세트로 고정된다. 메뉴를 고르는 세트 계산은 `/api/store/bundle/simulate`
+(`main_menu_id`, `component_menu_ids`, `scenario`, `horizon_days`, `simulations`, `seed` 모두 필수)를 쓴다.
+
+식재료 원가는 `StoreProfileService.effective_unit_cost(menu_id)`가 결정한다. 사용자 수정값이 있으면
+`USER`, 없으면 `menu_cost_history`의 최신 값(`POS_HISTORY`)이다. 서버는 `USER` 원가를
+`MarginCastDecisionService.set_cost_overrides_provider()`로 계산 엔진에 연결하며, 이 값은 가격·할인
+시뮬레이션의 `unit_cost`와 세트 증거의 원가만 바꾼다. 수요 예측과 가격탄력성 추정은 원가를
+사용하지 않으므로 변하지 않는다. 가격·세트 응답의 `cost_basis`는 사용한 원가와 출처를 담는다.
+수수료율은 `generate_data`의 엔진 상수이며 API로 수정할 수 없다. 포장비는 엔진이 모델링하지 않는다.
+
+신규 메뉴는 `analysis.status`가 `DATA_COLLECTING`이며 가격 비교와 세트 계산에서 거부된다.
+POS 메뉴의 상태는 엔진 capabilities에서 가져와 `ANALYZABLE` 또는
+`INSUFFICIENT_PRICE_VARIATION`으로 표시한다.
 
 도메인 검증 실패도 JSON 오류 객체로 반환한다. 잘못된 입력은 `400`, 없는 경로는 `404`,
 분석 패널이 준비되지 않은 경우는 `503`을 사용한다. 요청 본문은 64KiB로 제한한다.
