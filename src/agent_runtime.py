@@ -6,6 +6,7 @@ from collections.abc import Callable, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 import json
+from time import perf_counter
 
 from jsonschema import Draft202012Validator
 
@@ -58,6 +59,26 @@ class AgentMissingInputError(AgentRuntimeError):
 
 
 @dataclass(frozen=True)
+class AgentRunTiming:
+    """한 Agent 실행의 관측 시간. 계산 결과에는 영향을 주지 않는다."""
+
+    label: str
+    first_provider_ms: float
+    tool_execution_ms: float
+    second_provider_ms: float | None
+    runtime_total_ms: float
+
+    def as_dict(self) -> JsonObject:
+        return {
+            "timing_label": self.label,
+            "first_provider_ms": self.first_provider_ms,
+            "tool_execution_ms": self.tool_execution_ms,
+            "second_provider_ms": self.second_provider_ms,
+            "runtime_total_ms": self.runtime_total_ms,
+        }
+
+
+@dataclass(frozen=True)
 class AgentRunResult:
     """Response Policy 적용 전까지 관찰할 수 있는 단일 실행 결과."""
 
@@ -66,6 +87,9 @@ class AgentRunResult:
     tool_result: ToolResult
     final_response: LLMResponse | None
     messages: tuple[Message, ...]
+    timing: AgentRunTiming
+    model_identifier: str
+    prompt_version: str
 
 
 class AgentRuntime:
@@ -77,10 +101,12 @@ class AgentRuntime:
         *,
         tools: Sequence[JsonObject] = TOOL_SCHEMAS,
         tool_executor: ToolExecutor = execute_tool,
+        clock=perf_counter,
     ) -> None:
         self.provider = provider
         self.tools = tuple(deepcopy(tool) for tool in tools)
         self.tool_executor = tool_executor
+        self.clock = clock
 
     @staticmethod
     def _missing_input_question(fields: tuple[str, ...]) -> str:
@@ -159,9 +185,24 @@ class AgentRuntime:
         if response.text is None or not response.text.strip():
             raise AgentRuntimeError("최종 텍스트 응답이 비어 있습니다.")
 
-    def run(self, agent_input: AgentInput) -> AgentRunResult:
+    def run(
+        self,
+        agent_input: AgentInput,
+        *,
+        timing_label: str = "unspecified",
+    ) -> AgentRunResult:
         if not isinstance(agent_input, AgentInput):
             raise TypeError("agent_input은 AgentInput이어야 합니다.")
+        if not isinstance(timing_label, str) or not timing_label.strip():
+            raise ValueError("timing_label은 비어 있지 않은 문자열이어야 합니다.")
+
+        run_started = self.clock()
+        model_identifier = getattr(
+            self.provider,
+            "model",
+            type(self.provider).__name__,
+        )
+        prompt_version = getattr(self.provider, "prompt_version", "unknown")
 
         messages = [
             Message(
@@ -170,7 +211,9 @@ class AgentRuntime:
                 context=agent_input.business_inputs,
             )
         ]
+        first_provider_started = self.clock()
         first_response = self.provider.generate(tuple(messages), self.tools)
+        first_provider_ms = (self.clock() - first_provider_started) * 1000
         if not isinstance(first_response, LLMResponse):
             raise AgentRuntimeError("Provider는 LLMResponse를 반환해야 합니다.")
 
@@ -184,7 +227,9 @@ class AgentRuntime:
             )
         )
 
+        tool_started = self.clock()
         raw_result = self.tool_executor(tool_call.name, deepcopy(tool_call.arguments))
+        tool_execution_ms = (self.clock() - tool_started) * 1000
         tool_result = ToolResult(
             call_id=tool_call.call_id,
             tool_name=tool_call.name,
@@ -200,15 +245,27 @@ class AgentRuntime:
         )
 
         if tool_result.raw["status"] == "error":
+            runtime_total_ms = (self.clock() - run_started) * 1000
             return AgentRunResult(
                 agent_input=agent_input,
                 tool_call=tool_call,
                 tool_result=tool_result,
                 final_response=None,
                 messages=tuple(messages),
+                timing=AgentRunTiming(
+                    label=timing_label.strip(),
+                    first_provider_ms=first_provider_ms,
+                    tool_execution_ms=tool_execution_ms,
+                    second_provider_ms=None,
+                    runtime_total_ms=runtime_total_ms,
+                ),
+                model_identifier=str(model_identifier),
+                prompt_version=str(prompt_version),
             )
 
+        second_provider_started = self.clock()
         final_response = self.provider.generate(tuple(messages), self.tools)
+        second_provider_ms = (self.clock() - second_provider_started) * 1000
         if not isinstance(final_response, LLMResponse):
             raise AgentRuntimeError("Provider는 LLMResponse를 반환해야 합니다.")
         self._validate_final_response(final_response)
@@ -216,10 +273,20 @@ class AgentRuntime:
             Message(role=MessageRole.ASSISTANT, content=final_response.text or "")
         )
 
+        runtime_total_ms = (self.clock() - run_started) * 1000
         return AgentRunResult(
             agent_input=agent_input,
             tool_call=tool_call,
             tool_result=tool_result,
             final_response=final_response,
             messages=tuple(messages),
+            timing=AgentRunTiming(
+                label=timing_label.strip(),
+                first_provider_ms=first_provider_ms,
+                tool_execution_ms=tool_execution_ms,
+                second_provider_ms=second_provider_ms,
+                runtime_total_ms=runtime_total_ms,
+            ),
+            model_identifier=str(model_identifier),
+            prompt_version=str(prompt_version),
         )

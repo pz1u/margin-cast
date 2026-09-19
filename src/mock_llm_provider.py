@@ -36,6 +36,8 @@ def _default_price_tool_call() -> ToolCall:
 class MockLLMProvider:
     """자연어 해석 없이 준비된 Tool Call과 최종 문자열을 순서대로 반환한다."""
 
+    prompt_version = "mock-price-v1"
+
     def __init__(
         self,
         tool_call: ToolCall | None = None,

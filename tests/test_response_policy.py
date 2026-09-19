@@ -120,6 +120,16 @@ class PriceResponsePolicyTests(unittest.TestCase):
         self.assertIn(raw["data_provenance"]["warning"], response.notices)
         self.assertIn(selected["evidence_quality"]["interpretation"], response.notices)
 
+    def test_each_pass_response_gets_a_unique_recommendation_id(self):
+        run_result = self.run_agent()
+
+        first = self.policy.evaluate(run_result).agent_response
+        second = self.policy.evaluate(run_result).agent_response
+
+        self.assertTrue(first.recommendation_id)
+        self.assertTrue(second.recommendation_id)
+        self.assertNotEqual(first.recommendation_id, second.recommendation_id)
+
     def test_decision_mismatch_is_rejected_without_agent_response(self):
         run_result = self.run_agent()
         engine_action = DecisionAction(

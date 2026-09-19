@@ -352,6 +352,7 @@ class AgentResponse:
     """UI용 원본 사실과 LLM 설명을 분리한 Agent 반환값."""
 
     status: AgentResponseStatus
+    recommendation_id: str | None = None
     facts: JsonObject = field(default_factory=dict)
     fact_provenance: dict[str, Provenance] = field(default_factory=dict)
     decision: Decision | None = None
@@ -368,6 +369,8 @@ class AgentResponse:
     def __post_init__(self) -> None:
         if not isinstance(self.status, AgentResponseStatus):
             raise TypeError("status는 AgentResponseStatus여야 합니다.")
+        if self.recommendation_id is not None:
+            _require_text(self.recommendation_id, "recommendation_id")
         facts = _copy_object(self.facts)
         provenance = _copy_provenance(self.fact_provenance)
         _validate_value_provenance(
@@ -390,6 +393,10 @@ class AgentResponse:
             raise ValueError("needs_input 응답에는 missing_input이 필요합니다.")
         if self.status is AgentResponseStatus.COMPLETED and self.missing_input is not None:
             raise ValueError("completed 응답에는 missing_input을 넣을 수 없습니다.")
+        if self.status is AgentResponseStatus.COMPLETED and self.recommendation_id is None:
+            raise ValueError("completed 응답에는 recommendation_id가 필요합니다.")
+        if self.status is not AgentResponseStatus.COMPLETED and self.recommendation_id is not None:
+            raise ValueError("완료 상태가 아닌 응답에는 recommendation_id를 넣을 수 없습니다.")
         if self.status is AgentResponseStatus.ERROR:
             if self.error is None:
                 raise ValueError("error 응답에는 AgentError가 필요합니다.")

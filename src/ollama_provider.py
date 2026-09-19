@@ -33,6 +33,7 @@ ToolResult의 Decision은 변경하거나 재판단하지 말고 decision_claim�
 최종 응답에는 문자 체계와 관계없이 숫자나 수사를 쓰지 말고 수량, 금액, 비율, 기간을 표현하지 마세요.
 실행 기본값과 계산 공식은 추측하지 마세요.
 """
+OLLAMA_PROMPT_VERSION = "ollama-price-v1"
 
 
 FINAL_RESPONSE_SCHEMA = {
@@ -177,6 +178,7 @@ class OllamaProvider:
             _required_environment("OLLAMA_BASE_URL", base_url)
         )
         self.model = _required_environment("OLLAMA_MODEL", model)
+        self.prompt_version = OLLAMA_PROMPT_VERSION
         if isinstance(timeout_seconds, bool) or not isinstance(
             timeout_seconds, (int, float)
         ) or timeout_seconds <= 0:

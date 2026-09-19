@@ -72,6 +72,10 @@ class AgentToolContractTests(unittest.TestCase):
                 "compare_price_strategies",
                 "compare_price_strategies_with_forecast",
                 "simulate_bundle_strategy",
+                "create_experiment_plan",
+                "list_pending_experiments",
+                "record_experiment_result",
+                "get_feedback_summary",
             ],
         )
         self.assertEqual(len(names), len(set(names)))

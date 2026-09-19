@@ -4,8 +4,16 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from src.agent_result_router import AgentResultRouter
 from src.agent_runtime import AgentRuntime, AgentRuntimeError
-from src.agent_schemas import AgentInput, Provenance, ToolCall, ValueSource
+from src.agent_schemas import (
+    AgentInput,
+    AgentResponse,
+    AgentResponseStatus,
+    Provenance,
+    ToolCall,
+    ValueSource,
+)
 from src.agent_tool_contracts import TOOL_SCHEMAS, execute_tool
 from src.decision_service import MarginCastDecisionService
 from src.execution_defaults import get_execution_defaults
@@ -13,6 +21,7 @@ from src.generate_data import generate_dataset, save_dataset
 from src.llm_provider import LLMProvider
 from src.mock_llm_provider import MockLLMProvider
 from src.prepare_analysis_data import prepare_analysis_data
+from src.response_policy import ResponsePolicyOutcome
 
 
 class RecordingToolExecutor:
@@ -23,6 +32,33 @@ class RecordingToolExecutor:
     def __call__(self, tool_name, arguments):
         self.calls.append((tool_name, arguments))
         return self.result
+
+
+class SequenceClock:
+    def __init__(self, *values):
+        self.values = iter(values)
+
+    def __call__(self):
+        return next(self.values)
+
+
+class PassingPolicy:
+    def evaluate(self, run_result):
+        validation = {
+            "status": "PASS",
+            "violations": [],
+            "engine_decision": "EXPERIMENT",
+            "llm_decision_claim": "EXPERIMENT",
+            "presented_decision": "EXPERIMENT",
+        }
+        return ResponsePolicyOutcome(
+            policy_validation=validation,
+            agent_response=AgentResponse(
+                status=AgentResponseStatus.COMPLETED,
+                recommendation_id="timing-recommendation",
+                policy_validation=validation,
+            ),
+        )
 
 
 def price_question():
@@ -37,6 +73,40 @@ def price_question():
 
 
 class AgentRuntimeTests(unittest.TestCase):
+    def test_runtime_and_policy_timings_are_logged_with_cold_label(self):
+        raw_result = {
+            "status": "ok",
+            "recommended_action": {"action": "EXPERIMENT"},
+        }
+        runtime = AgentRuntime(
+            MockLLMProvider(),
+            tool_executor=RecordingToolExecutor(raw_result),
+            clock=SequenceClock(0, 1, 3, 4, 7, 8, 13, 15),
+        )
+        run_result = runtime.run(price_question(), timing_label="cold")
+        router = AgentResultRouter(
+            PassingPolicy(),
+            clock=SequenceClock(20, 20.25),
+        )
+
+        with self.assertLogs("src.agent_result_router", level="INFO") as logs:
+            outcome = router.route(run_result)
+
+        self.assertEqual(
+            outcome.timings_ms,
+            {
+                "timing_label": "cold",
+                "first_provider_ms": 2000,
+                "tool_execution_ms": 3000,
+                "second_provider_ms": 5000,
+                "runtime_total_ms": 15000,
+                "response_policy_ms": 250,
+                "total_ms": 15250,
+                "model_identifier": "MockLLMProvider",
+            },
+        )
+        self.assertIn('"timing_label": "cold"', logs.output[0])
+
     def test_price_question_runs_one_tool_call_and_preserves_raw_result(self):
         raw_result = {
             "status": "ok",

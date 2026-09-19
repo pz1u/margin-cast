@@ -50,6 +50,18 @@ MarginCast는 추천 전략을 실행하기 전에 예측 분포를 실험 계�
 가능하면 `parallel_control`을 사용하고, 어느 방식도 한 건의 결과를 인과효과의 확정값으로
 취급하지 않는다.
 
+## Agent 연결
+
+Response Policy를 통과한 추천은 `recommendation_id`를 먼저 가진다. 이 시점의 상태는
+`not_planned`이며 `feedback_id`는 없다. 사용자가 실행 의사를 명시하고 실험 기간을 제공한 경우에만
+예측 스냅샷을 `create_experiment_plan`에 전달하고, 반환된 별도 `feedback_id`를 연결해 `planned`로
+전환한다. 실제 판매량·기여이익·기준선 기여이익과 기준선 방식이 모두 USER 출처로 제공되면
+`record_experiment_result`를 호출해 `completed`로 전환한다.
+
+Agent 감사 로그에는 두 ID의 연결 상태와 Decision, Policy 결과, 모델·프롬프트 식별자,
+호출 Tool 이름, 가격 ToolResult의 SHA-256 참조만 저장한다. 전체 대화와 설명문, API 키,
+주소 및 정확한 좌표는 저장하지 않는다.
+
 ## 웹과 HTTP API
 
 가격·할인 계산 뒤 `실험 피드백` 탭에서 예측 스냅샷과 기간을 계획으로 저장한다. 실험이

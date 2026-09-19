@@ -192,6 +192,19 @@ E.1 실제 smoke에서는 `qwen3:4b`가 가격 Tool Call, 실제 계산, 구조�
 끝까지 통과했다. CPU 전용 환경에서 한 실행에 약 137초가 걸렸다. `llama3.2`는 계약 외 Tool 인자,
 `qwen3:8b`는 최종 응답 timeout이 관찰되어 현재 로컬 검증 모델은 `qwen3:4b`로 둔다.
 
+F단계 timing 로그는 `first_provider_ms`, `tool_execution_ms`, `second_provider_ms`,
+`response_policy_ms`, `total_ms`를 기록한다. `timing_label`은 실행자가 `cold` 또는 `warm`으로
+지정하며 로그에는 사용자 원문을 포함하지 않는다. 같은 `qwen3:4b`에서 실제 측정한 결과는 다음과
+같다.
+
+| 구분 | 첫 Provider | Tool | 두 번째 Provider | Policy | 전체 | 정책 결과 |
+|---|---:|---:|---:|---:|---:|---|
+| cold | 93,471ms | 454ms | 38,212ms | 0.224ms | 132,138ms | 숫자 재생성으로 REJECTED |
+| warm | 120,924ms | 494ms | 8,057ms | 0.334ms | 129,475ms | PASS |
+
+현재 측정에서는 전체 시간이 비슷하고 두 Provider 구간 사이의 편차가 컸다. F단계에서는 모델이나
+생성 설정을 변경하지 않고 관측 결과만 남긴다.
+
 실제 로컬 서버 테스트는 기본 회귀 테스트에서 제외한다. Ollama 서버와 Tool Calling 지원 모델을
 준비한 뒤 다음처럼 명시적으로 실행한다.
 
@@ -201,6 +214,20 @@ $env:OLLAMA_MODEL="<tool-calling-model>"
 $env:RUN_OLLAMA_INTEGRATION="1"
 python -m unittest tests.test_ollama_integration
 ```
+
+`OLLAMA_TIMING_LABEL=cold` 또는 `warm`을 함께 지정하면 선택형 smoke 출력에서 같은 구간을 비교할
+수 있다.
+
+Feedback Tool Registry에는 다음 네 도구를 등록한다.
+
+- `create_experiment_plan`
+- `list_pending_experiments`
+- `record_experiment_result`
+- `get_feedback_summary`
+
+Agent Feedback Workflow는 사용자 실행 확인을 boolean으로 받은 뒤에만 계획 Tool을 호출한다.
+계획의 예측 분포와 Decision 문맥은 가격 ToolResult에서 복사하며, 실제 결과는 USER provenance가
+있는 값만 전달한다. 기간이나 실제값이 부족하면 Tool을 호출하지 않고 `MissingInput`을 반환한다.
 
 Decision Engine의 데이터 출처, 근거 품질 산식과 검증 계획은
 [Decision Engine 데이터 출처와 판단 방법](decision-methodology.md)을 기준으로 한다.

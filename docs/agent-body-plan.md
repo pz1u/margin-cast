@@ -359,10 +359,10 @@ LLM 설명 전문, API 키, 주소 원문, 위도·경도와 전체 대화 원�
 `engine_decision`과 `presented_decision`이 다르면 로그만 남기고 사용자에게 보내는 방식이 아니라,
 Response Policy가 해당 응답을 거부해야 한다.
 
-현재 계산 엔진에는 `feedback_id`와 `planned`/`completed` 상태가 구현돼 있다. 위 Agent 감사
-로그는 본체 구현 단계의 계약이며 아직 저장소나 런타임이 구현된 상태가 아니다. 따라서
-`feedback_id`를 `recommendation_id`로 대신 사용하지 않는다. Agent가 추천을 만들 때 먼저
-`recommendation_id`를 발급하고, 사용자가 실험을 선택한 경우에만 생성된 `feedback_id`를 연결한다.
+F단계에서 PASS 응답마다 `recommendation_id`를 발급하고 최소 Agent 감사 로그를 연결했다.
+사용자가 실행 의사를 명시한 경우에만 `create_experiment_plan`을 호출해 별도 `feedback_id`를
+연결한다. 감사 상태는 `not_planned → planned → completed`로 전이하며, ToolResult 원본은
+SHA-256 참조로만 기록한다. 원문 프롬프트·LLM 설명·주소·좌표·API 키는 저장하지 않는다.
 
 ## 13. 오류 처리
 
@@ -450,7 +450,7 @@ A단계를 확장 설계 단계로 사용하지 않는다. Mock Runtime 한 건�
 | C | ToolResult → AgentResponse 정책 | 핵심 사실 고정, Decision 일치, 필수 고지 검증 후 PASS — 완료 |
 | D | 오류·Missing Input | 출처 없는 숫자를 만들지 않고 질문 또는 구조화된 오류 반환 — 완료 |
 | E | 실제 LLM Provider | Mock과 같은 Provider Interface로 Ollama 모델 연결 — 완료 |
-| F | Feedback·Audit | 추천 ID, 구조화된 판단, 실험 계획과 실제 결과 연결 상태 보존 |
+| F | Feedback·Audit | 추천 ID, 구조화된 판단, 실험 계획과 실제 결과 연결 상태 보존 — 완료 |
 | G | Web | UI가 설명문이 아니라 `AgentResponse.facts`로 핵심 수치와 Decision 표시 |
 
 첫 세로 흐름은 `가격 질문 → Mock LLM → 가격 도구 → Response Policy → AgentResponse` 하나로

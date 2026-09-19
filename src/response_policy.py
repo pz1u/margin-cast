@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 import re
+from uuid import uuid4
 
 from .agent_runtime import AgentRunResult
 from .agent_schemas import (
@@ -44,6 +45,11 @@ def _unique(values):
 
 class PriceResponsePolicy:
     """가격 비교 한 건의 ENGINE facts와 Decision 일치만 검증한다."""
+
+    def __init__(self, recommendation_id_factory=None) -> None:
+        self.recommendation_id_factory = recommendation_id_factory or (
+            lambda: uuid4().hex
+        )
 
     def _validation(
         self,
@@ -278,6 +284,7 @@ class PriceResponsePolicy:
         )
         response = AgentResponse(
             status=AgentResponseStatus.COMPLETED,
+            recommendation_id=self.recommendation_id_factory(),
             facts=facts,
             fact_provenance=provenance,
             decision=Decision(

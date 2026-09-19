@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+import json
+import logging
+from time import perf_counter
 from typing import Protocol
 
 from .agent_runtime import AgentRunResult
@@ -25,15 +28,30 @@ class ResponsePolicy(Protocol):
         ...
 
 
+class AuditRecorder(Protocol):
+    def record_recommendation(
+        self,
+        run_result: AgentRunResult,
+        agent_response: AgentResponse,
+        policy_validation: JsonObject,
+    ) -> JsonObject:
+        ...
+
+
+LOGGER = logging.getLogger(__name__)
+
+
 @dataclass(frozen=True)
 class AgentResultRoutingOutcome:
     """정상 정책 결과 또는 정책을 거치지 않은 오류/부족 입력 결과."""
 
     agent_response: AgentResponse | None
     policy_validation: JsonObject
+    timings_ms: JsonObject | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "policy_validation", deepcopy(self.policy_validation))
+        object.__setattr__(self, "timings_ms", deepcopy(self.timings_ms or {}))
 
 
 _INVALID_INPUT_CODES = {
@@ -80,9 +98,21 @@ class AgentResultRouter:
         response_policy: ResponsePolicy,
         *,
         execution_defaults: dict[str, JsonObject] | None = None,
+        audit_recorder: AuditRecorder | None = None,
+        clock=perf_counter,
     ) -> None:
         self.response_policy = response_policy
         self.execution_defaults = deepcopy(execution_defaults or {})
+        self.audit_recorder = audit_recorder
+        self.clock = clock
+
+    def _timings(self, run_result, response_policy_ms):
+        values = run_result.timing.as_dict()
+        values["response_policy_ms"] = response_policy_ms
+        values["total_ms"] = run_result.timing.runtime_total_ms + response_policy_ms
+        values["model_identifier"] = run_result.model_identifier
+        LOGGER.info("agent_timing %s", json.dumps(values, sort_keys=True))
+        return values
 
     def route(self, run_result: AgentRunResult) -> AgentResultRoutingOutcome:
         if not isinstance(run_result, AgentRunResult):
@@ -90,10 +120,23 @@ class AgentResultRouter:
 
         raw = run_result.tool_result.raw
         if raw["status"] == "ok":
+            policy_started = self.clock()
             policy_outcome = self.response_policy.evaluate(run_result)
+            response_policy_ms = (self.clock() - policy_started) * 1000
+            timings = self._timings(run_result, response_policy_ms)
+            if (
+                self.audit_recorder is not None
+                and policy_outcome.agent_response is not None
+            ):
+                self.audit_recorder.record_recommendation(
+                    run_result,
+                    policy_outcome.agent_response,
+                    policy_outcome.policy_validation,
+                )
             return AgentResultRoutingOutcome(
                 agent_response=policy_outcome.agent_response,
                 policy_validation=policy_outcome.policy_validation,
+                timings_ms=timings,
             )
 
         error = raw.get("error")

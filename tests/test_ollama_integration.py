@@ -66,7 +66,10 @@ class OllamaIntegrationTests(unittest.TestCase):
                 tool_executor=partial(execute_tool, service=service),
             )
 
-            run_result = runtime.run(agent_input)
+            run_result = runtime.run(
+                agent_input,
+                timing_label=os.getenv("OLLAMA_TIMING_LABEL", "unspecified"),
+            )
             outcome = AgentResultRouter(
                 PriceResponsePolicy(),
                 execution_defaults=get_execution_defaults(),
@@ -86,6 +89,7 @@ class OllamaIntegrationTests(unittest.TestCase):
                         "policy_violations": outcome.policy_validation["violations"],
                         "explanation": run_result.final_response.text,
                         "next_action": run_result.final_response.next_action,
+                        "timings_ms": outcome.timings_ms,
                     },
                     ensure_ascii=True,
                 )
