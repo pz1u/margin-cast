@@ -105,28 +105,27 @@ Response Policy는 사후 문장 검사만 하는 모듈이 아니다. ToolResul
 
 | 의도 | 예시 | 도구 | 상태 |
 |---|---|---|---|
-| 기능 조회 | “무슨 메뉴를 분석할 수 있어?” | `get_margincast_capabilities` | 준비됨, `execution_defaults` 추가 필요 |
+| 기능 조회 | “무슨 메뉴를 분석할 수 있어?” | `get_margincast_capabilities` | 준비됨, 도구별 `execution_defaults` 포함 |
 | 가격·할인 비교 | “치킨마요를 500원 올리면?” | `compare_price_strategies` | 준비됨 |
-| 세트 분석 | “치킨마요 콜라 세트 어때?” | `simulate_bundle_strategy` | 준비됨, 범용 메뉴 스키마 보강 예정 |
-| 실제 날씨 반영 | “우리 매장 기준 다음 4일은?” | `compare_price_strategies_with_forecast` | 주소 방식 준비됨, 좌표·격자 계약 보강 필요 |
+| 세트 분석 | “치킨마요 콜라 세트 어때?” | `simulate_bundle_strategy` | 준비됨, 숫자 출처 계약 포함 |
+| 실제 날씨 반영 | “우리 매장 기준 다음 4일은?” | `compare_price_strategies_with_forecast` | 주소·위경도·기상청 격자 입력 준비됨 |
 | 실험 계획 저장 | “이 안으로 7일 실험할게” | `create_experiment_plan` | HTTP 기능 준비됨, Agent 도구 등록 필요 |
 | 대기 실험 조회 | “결과 입력할 실험 보여줘” | `list_pending_experiments` | HTTP 기능 준비됨, Agent 도구 등록 필요 |
 | 실제 결과 입력 | “실제로 95개 팔렸어” | `record_experiment_result` | HTTP 기능 준비됨, Agent 도구 등록 필요 |
 | 누적 성능 조회 | “지금까지 예측 잘 맞았어?” | `get_feedback_summary` | HTTP 기능 준비됨, Agent 도구 등록 필요 |
 
-새 분석을 시작하거나 데이터·엔진 버전이 달라졌을 때 capabilities를 다시 조회한다. 같은 대화에서
-버전이 유지되면 매 메시지마다 반복 호출하지 않는다.
+Agent 초기화 때 capabilities를 조회해 캐시한다. 데이터·엔진 버전이 달라졌거나 지원 여부가
+불명확할 때 다시 조회하며, 같은 대화에서 매 메시지마다 반복 호출하지 않는다.
 
-현재 엔진 함수의 실행 기본값은 14일·10,000회·seed 42지만 capabilities 응답에는 아직
-`execution_defaults`가 없다. A단계에서 Tool Contract가 아래 구조를 반환하도록 보강한 뒤에만
-Agent가 `DEFAULT` 출처로 사용할 수 있다. 시스템 프롬프트나 Agent 코드에 이 숫자를 복제하지 않는다.
+capabilities 응답은 도구별 실행 기본값을 반환한다. 이 값은 `src/execution_defaults.py`의 단일
+상수에서 가져오며, 시스템 프롬프트나 Agent 코드에 숫자를 복제하지 않는다.
 
 ```json
 {
   "execution_defaults": {
-    "horizon_days": 14,
-    "simulations": 10000,
-    "seed": 42
+    "compare_price_strategies": {"horizon_days": 14, "simulations": 10000, "seed": 42},
+    "compare_price_strategies_with_forecast": {"horizon_days": 4, "simulations": 10000, "seed": 42},
+    "simulate_bundle_strategy": {"horizon_days": 14, "simulations": 10000, "seed": 42}
   }
 }
 ```
@@ -138,8 +137,12 @@ Agent는 세션 동안 다음 값만 구조화해 보관한다.
 ```text
 static_capabilities
   engine_version
-  data_version
+  tool_contract
   execution_defaults
+dynamic_capabilities
+  data_version
+  supported_menu_ids
+  data_sufficiency
 data_provenance
 selected_menu_id
 baseline_price
@@ -207,9 +210,10 @@ Agent가 제안하는 가격·할인액·기간·대상 매장·대상 메뉴는
 1. 주메뉴와 구성 메뉴를 확인한다.
 2. 기존 장바구니에서 관측 가능한 동시구매 정보를 먼저 제시한다.
 3. 식별할 수 없는 값만 평이한 질문으로 확인한다.
-4. 사용자가 모르면 보수·기준·낙관 계획 시나리오를 제시한다.
-5. 모든 비율을 `사용자 가정` 또는 `계획용 가정`으로 표시한다.
-6. 세트 계산 도구를 호출하고 결과가 `LOW`이면 전면 적용 대신 제한된 실험을 제안한다.
+4. 사용자가 모르면 `ENGINE` 또는 Tool Contract의 `DEFAULT` 출처에 계획 시나리오 숫자가 있는지 확인한다.
+5. 두 출처에도 값이 없으면 `MISSING_INPUT`으로 전환하고 필요한 비율만 질문한다.
+6. 모든 비율의 출처를 표시하고 LLM은 보수·기준·낙관 숫자를 생성하지 않는다.
+7. 세트 계산 도구를 호출하고 결과가 `LOW`이면 전면 적용 대신 제한된 실험을 제안한다.
 
 비율 질문은 “Take Rate가 몇 퍼센트인가요?”보다 “세트를 본 단품 고객 100명 중 몇 명이
 선택할 것 같나요?”처럼 표현한다.
@@ -306,8 +310,8 @@ UI는 `facts`의 핵심 수치와 Decision을 직접 표시한다. `presentation
 
 ## 11. 날씨 해석 규칙
 
-- 실제 예보 사용 여부와 적용 날짜를 밝힌다.
-- 비·온도·습도가 미래 수요 문맥에 반영됐다고만 설명한다.
+- 실제 예보를 사용하지 않았다면 그 사실을 밝힌다.
+- 실제 예보를 사용했다면 적용 날짜와 날씨 문맥을 밝힌다.
 - `menu_specific_causal_effect_validated=false`이면 특정 날씨가 판매를 증가 또는 감소시킨다고
   단정하지 않는다.
 - 주소 원문은 Tool Call 수행에만 사용하고 Agent 장기 메모리나 추천 로그에는 저장하지 않는다.
@@ -422,7 +426,7 @@ A단계를 확장 설계 단계로 사용하지 않는다. Mock Runtime 한 건�
 
 | 단계 | 작업 | 완료 조건 |
 |---|---|---|
-| A | Tool 계약 최소 보강 | `execution_defaults`, 좌표·격자 날씨 입력, Feedback, 범용 Bundle 입력 계약 확정 |
+| A | Tool 계약 최소 보강 | `execution_defaults`, 위치 입력 3형식, Bundle 숫자 출처, 날씨 해석 계약 확정 — 완료 |
 | B | Mock LLM Agent Runtime | 가격 질문 한 건이 Mock Provider → Tool Call → ToolResult까지 완료 |
 | C | ToolResult → AgentResponse 정책 | 핵심 사실 고정, Decision 일치, 필수 고지 검증 후 PASS |
 | D | 오류·Missing Input | 출처 없는 숫자를 만들지 않고 질문 또는 구조화된 오류 반환 |

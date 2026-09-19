@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 try:
+    from .execution_defaults import DEFAULT_HORIZON_DAYS, DEFAULT_SEED, DEFAULT_SIMULATIONS
     from .evidence_quality import (
         EVIDENCE_QUALITY_POLICY,
         EVIDENCE_QUALITY_POLICY_FINGERPRINT,
@@ -15,6 +16,7 @@ try:
         EVIDENCE_QUALITY_VERSION,
     )
 except ImportError:
+    from execution_defaults import DEFAULT_HORIZON_DAYS, DEFAULT_SEED, DEFAULT_SIMULATIONS
     from evidence_quality import (
         EVIDENCE_QUALITY_POLICY,
         EVIDENCE_QUALITY_POLICY_FINGERPRINT,
@@ -135,9 +137,9 @@ def simulate_bundle(
     evidence,
     scenario,
     *,
-    horizon_days=14,
-    simulations=10_000,
-    seed=42,
+    horizon_days=DEFAULT_HORIZON_DAYS,
+    simulations=DEFAULT_SIMULATIONS,
+    seed=DEFAULT_SEED,
     demand_log_sigma=0.08,
     cost_relative_std=0.05,
     baseline_daily_profit=None,
@@ -250,9 +252,9 @@ def run_bundle_simulation(
     panel_path,
     output_dir,
     scenario=None,
-    horizon_days=14,
-    simulations=10_000,
-    seed=42,
+    horizon_days=DEFAULT_HORIZON_DAYS,
+    simulations=DEFAULT_SIMULATIONS,
+    seed=DEFAULT_SEED,
 ):
     tables = load_observed_tables(data_dir)
     evidence = build_bundle_evidence(tables)
@@ -325,8 +327,8 @@ def main():
     parser.add_argument(
         "--output-dir", type=Path, default=root / "reports" / "simulation" / "bundle"
     )
-    parser.add_argument("--simulations", type=int, default=10_000)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--simulations", type=int, default=DEFAULT_SIMULATIONS)
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     args = parser.parse_args()
     report = run_bundle_simulation(
         args.data_dir,

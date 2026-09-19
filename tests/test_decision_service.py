@@ -6,6 +6,7 @@ import unittest
 import pandas as pd
 
 from src.decision_service import DecisionServiceError, MarginCastDecisionService
+from src.execution_defaults import get_execution_defaults
 from src.generate_data import generate_dataset, save_dataset
 from src.prepare_analysis_data import prepare_analysis_data
 
@@ -32,11 +33,23 @@ class DecisionServiceTests(unittest.TestCase):
         self.assertFalse(result["data"]["ground_truth_used"])
         self.assertEqual(result["data_provenance"]["source_type"], "synthetic_pos")
         self.assertFalse(result["data_provenance"]["uses_actual_store_data"])
+        self.assertEqual(result["execution_defaults"], get_execution_defaults())
         self.assertEqual(
             [row["menu_id"] for row in result["supported_menus"]],
             ["M01", "M02", "M03"],
         )
         self.assertNotIn("price_elasticity", result["data"])
+
+    def test_observed_history_disclosure_does_not_claim_missing_forecast(self):
+        result = self.service.compare_price_strategies(
+            "M01",
+            [{"name": "가격 인상", "list_price": 9500, "discount": 0}],
+            simulations=500,
+            seed=7,
+        )
+        notes = " ".join(result["interpretation_notes"])
+        self.assertIn("실제 예보를 사용하지 않았", notes)
+        self.assertNotIn("미래 날씨 예보가 없으므로", notes)
 
     def test_compare_adds_reference_and_returns_ranked_result(self):
         result = self.service.compare_price_strategies(

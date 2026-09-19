@@ -5,6 +5,12 @@ from pathlib import Path
 import pandas as pd
 
 try:
+    from .execution_defaults import (
+        DEFAULT_HORIZON_DAYS,
+        DEFAULT_SEED,
+        DEFAULT_SIMULATIONS,
+        get_execution_defaults,
+    )
     from .evidence_quality import calculate_evidence_quality
     from .decision_policy import rank_strategies
     from .estimate_elasticity import estimate_price_elasticity
@@ -12,6 +18,12 @@ try:
     from .simulate_bundle import build_bundle_evidence, simulate_bundle
     from .simulate_strategy import build_reference_forecast, simulate_scenarios
 except ImportError:
+    from execution_defaults import (
+        DEFAULT_HORIZON_DAYS,
+        DEFAULT_SEED,
+        DEFAULT_SIMULATIONS,
+        get_execution_defaults,
+    )
     from evidence_quality import calculate_evidence_quality
     from decision_policy import rank_strategies
     from estimate_elasticity import estimate_price_elasticity
@@ -162,8 +174,10 @@ class MarginCastDecisionService:
             "operations": [
                 "get_capabilities",
                 "compare_price_strategies",
+                "compare_price_strategies_with_forecast",
                 "simulate_bundle_strategy",
             ],
+            "execution_defaults": get_execution_defaults(),
             "limits": {
                 "horizon_days": {"minimum": 1, "maximum": int(panel["day_index"].nunique())},
                 "simulations": {"minimum": MIN_SIMULATIONS, "maximum": MAX_SIMULATIONS},
@@ -171,7 +185,7 @@ class MarginCastDecisionService:
             },
             "limitations": [
                 "가격탄력성은 학습 구간에 두 개 이상의 가격 수준이 관측된 메뉴만 지원한다.",
-                "미래 날씨 입력 전까지 최근 관측 문맥을 재사용한다.",
+                "실제 예보를 사용하지 않은 분석은 최근 관측 날씨 문맥을 재사용한다.",
                 "세트 전략의 신규 수요와 잠식 효과는 사용자가 명시한 가정으로 계산한다.",
                 "근거 품질 점수는 실제 매장 결과로 아직 보정되지 않은 휴리스틱이다.",
             ],
@@ -260,9 +274,9 @@ class MarginCastDecisionService:
         self,
         menu_id,
         scenarios,
-        horizon_days=14,
-        simulations=10_000,
-        seed=42,
+        horizon_days=DEFAULT_HORIZON_DAYS,
+        simulations=DEFAULT_SIMULATIONS,
+        seed=DEFAULT_SEED,
         forecasts=None,
     ):
         self._validate_compare_request(menu_id, scenarios, horizon_days, simulations, seed)
@@ -379,7 +393,7 @@ class MarginCastDecisionService:
                 (
                     "기상청 단기예보를 미래 날짜의 영업시간 문맥으로 사용했다."
                     if context_source == "kma_forecast"
-                    else "미래 날씨 예보가 없으므로 최근 관측 문맥을 재사용했다."
+                    else "실제 예보를 사용하지 않았으며 최근 관측 날씨 문맥을 재사용했다."
                 ),
                 "evidence_quality는 실제 매장 결과로 아직 보정되지 않은 휴리스틱이며 success_probability와 별개다.",
                 "날씨는 미래 수요 문맥으로 사용되며 메뉴별 날씨 인과효과를 입증하지 않는다.",
@@ -389,9 +403,9 @@ class MarginCastDecisionService:
     def simulate_bundle_strategy(
         self,
         scenario,
-        horizon_days=14,
-        simulations=10_000,
-        seed=42,
+        horizon_days=DEFAULT_HORIZON_DAYS,
+        simulations=DEFAULT_SIMULATIONS,
+        seed=DEFAULT_SEED,
     ):
         if isinstance(horizon_days, bool) or not isinstance(horizon_days, int) or horizon_days < 1:
             raise DecisionServiceError("INVALID_HORIZON", "horizon_days는 1 이상의 정수여야 합니다.")

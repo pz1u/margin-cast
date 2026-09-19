@@ -4,12 +4,17 @@ from datetime import datetime
 from pathlib import Path
 
 from src.decision_service import MarginCastDecisionService
+from src.execution_defaults import (
+    DEFAULT_SEED,
+    DEFAULT_SIMULATIONS,
+    FORECAST_DEFAULT_HORIZON_DAYS,
+)
 from src.kakao_geocoding import (
     KakaoConfigurationError,
     KakaoGeocodingError,
     geocode_address,
 )
-from src.location_grid import KmaGridError, latlon_to_grid
+from src.location_grid import KmaGridError, resolve_grid_coordinates
 from src.weather_forecast import KmaApiError, KmaConfigurationError, fetch_village_forecast
 
 
@@ -40,18 +45,41 @@ class ForecastDecisionService:
     def compare_price_strategies(
         self,
         *,
-        address,
         menu_id,
         scenarios,
-        horizon_days=4,
-        simulations=10_000,
-        seed=42,
+        location=None,
+        address=None,
+        horizon_days=FORECAST_DEFAULT_HORIZON_DAYS,
+        simulations=DEFAULT_SIMULATIONS,
+        seed=DEFAULT_SEED,
     ):
-        address = str(address or "").strip()
-        if not 1 <= len(address) <= 200:
+        if location is not None and address is not None:
             raise ForecastDecisionError(
-                "INVALID_ADDRESS", "매장 주소는 1~200자로 입력하세요."
+                "INVALID_LOCATION", "location과 address를 함께 입력할 수 없습니다."
             )
+        if address is not None:
+            location = {"address": address}
+        if not isinstance(location, dict):
+            raise ForecastDecisionError("INVALID_LOCATION", "location은 객체여야 합니다.")
+
+        location_fields = set(location)
+        if location_fields == {"address"}:
+            address_query = str(location["address"] or "").strip()
+            if not 1 <= len(address_query) <= 200:
+                raise ForecastDecisionError(
+                    "INVALID_LOCATION", "주소 검색 문자열은 1~200자로 입력하세요."
+                )
+            location_source = "address"
+        elif location_fields == {"latitude", "longitude"}:
+            location_source = "wgs84"
+        elif location_fields == {"kma_nx", "kma_ny"}:
+            location_source = "kma_grid"
+        else:
+            raise ForecastDecisionError(
+                "INVALID_LOCATION",
+                "주소, WGS84 위도·경도, KMA nx·ny 중 정확히 한 방식만 입력하세요.",
+            )
+
         if isinstance(horizon_days, bool) or not isinstance(horizon_days, int):
             raise ForecastDecisionError(
                 "INVALID_HORIZON", "실제 예보 비교 기간은 정수여야 합니다."
@@ -63,14 +91,34 @@ class ForecastDecisionService:
             )
 
         try:
-            location = self.geocoder(address, env_path=self.env_path)
-            nx, ny = latlon_to_grid(location["latitude"], location["longitude"])
+            if location_source == "address":
+                resolved = self.geocoder(address_query, env_path=self.env_path)
+                nx, ny = resolve_grid_coordinates(
+                    latitude=resolved["latitude"],
+                    longitude=resolved["longitude"],
+                )
+            elif location_source == "wgs84":
+                nx, ny = resolve_grid_coordinates(
+                    latitude=location["latitude"],
+                    longitude=location["longitude"],
+                )
+            else:
+                nx, ny = resolve_grid_coordinates(
+                    nx=location["kma_nx"],
+                    ny=location["kma_ny"],
+                )
             forecasts = self.forecast_fetcher(nx, ny, env_path=self.env_path)
         except (KakaoConfigurationError, KmaConfigurationError) as error:
             raise ForecastDecisionError(
                 "FORECAST_CONFIGURATION_ERROR", str(error)
             ) from error
-        except (KakaoGeocodingError, KmaApiError, KmaGridError) as error:
+        except KakaoGeocodingError as error:
+            raise ForecastDecisionError(
+                "FORECAST_LOOKUP_FAILED",
+                "주소를 예보 위치로 변환하지 못했습니다.",
+                retryable=True,
+            ) from error
+        except (KmaApiError, KmaGridError) as error:
             raise ForecastDecisionError(
                 "FORECAST_LOOKUP_FAILED", str(error), retryable=True
             ) from error
@@ -92,17 +140,28 @@ class ForecastDecisionService:
             seed=seed,
             forecasts=forecasts,
         )
+        applied_from = available_dates[0]
+        applied_to = available_dates[horizon_days - 1]
+        result.setdefault("weather_context", {}).update(
+            {
+                "source": "kma_forecast",
+                "uses_future_forecast": True,
+                "menu_specific_causal_effect_validated": False,
+                "applied_from": applied_from,
+                "applied_to": applied_to,
+            }
+        )
         result["weather"] = {
             "source": "kma_short_term_forecast",
-            "location_source": "kakao_address",
-            "address_name": location.get("address_name"),
+            "location_source": location_source,
             "nx": nx,
             "ny": ny,
             "forecast_rows": len(forecasts),
             "available_from": available_dates[0],
             "available_to": available_dates[-1],
-            "applied_from": available_dates[0],
-            "applied_to": available_dates[horizon_days - 1],
+            "applied_from": applied_from,
+            "applied_to": applied_to,
+            "menu_specific_causal_effect_validated": False,
             "fetched_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         }
         return result
