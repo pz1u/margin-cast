@@ -175,13 +175,13 @@ test("planning assumptions come from the engine observation", () => {
   };
   assert.deepEqual(Model.planningAssumptions(observation, "base"), { take_rate: 0.3 });
   assert.throws(() => Model.planningAssumptions(observation, "unknown"));
-  assert.equal(Model.sourceLabel("DEFAULT"), "계획용 기본값");
-  assert.equal(Model.sourceLabel("USER"), "직접 입력");
+  assert.equal(Model.sourceLabel("DEFAULT"), "계획용 가정");
+  assert.equal(Model.sourceLabel("USER"), "직접 입력한 가정");
 });
 
 test("cost basis shows whether the cost is user edited", () => {
-  assert.match(Model.costBasisLabel({ unit_cost: 5900, source: "USER" }), /직접 수정한 값/);
-  assert.match(Model.costBasisLabel({ unit_cost: 4900, source: "POS_HISTORY" }), /POS 원가 이력/);
+  assert.match(Model.costBasisLabel({ unit_cost: 5900, source: "USER" }), /직접 수정한 원가/);
+  assert.match(Model.costBasisLabel({ unit_cost: 4900, source: "POS_HISTORY" }), /POS 기준 원가/);
 });
 
 test("location features are prepared but not connected", () => {
@@ -236,4 +236,66 @@ test("agent chat panel and its wiring are preserved", () => {
   assert.match(html, /chat-core\.js/);
   assert.match(read("assets/app.js"), /\/api\/agent\/chat/);
   assert.match(html, /id="agent-tab"[^>]*>AI 상담</);
+});
+
+test("internal enum and source names never reach the user", () => {
+  const shown = [
+    ...["ANALYZABLE", "INSUFFICIENT_PRICE_VARIATION", "DATA_COLLECTING", "UNKNOWN"].flatMap((status) => {
+      const info = Model.analysisInfo(status);
+      return [info.label, info.message];
+    }),
+    ...["USER", "DEFAULT", "ENGINE", "POS_HISTORY", "X"].map(Model.sourceLabel),
+    ...["USER", "POS_HISTORY", "X"].map(Model.costSourceLabel),
+    Model.costBasisLabel({ unit_cost: 4900, source: "POS_HISTORY" }),
+    Model.evidenceLabel({ label: "LOW", validation: { empirically_calibrated: false } }),
+    ...["RECOMMEND", "EXPERIMENT", "HOLD"].map(Model.decisionGuidance),
+    ...Model.BUNDLE_RATE_FIELDS.flatMap((field) => [Model.effectGroup(field), Model.RATE_LABELS[field]]),
+  ];
+  shown.forEach((text) => {
+    assert.doesNotMatch(text.replace(/POS/g, ""), /[A-Z]{3,}|_|POS_HISTORY|미보정|elasticity|seed/, `internal term in: ${text}`);
+  });
+});
+
+test("plan assumptions are always described as not estimated from POS data", () => {
+  assert.match(Model.PLAN_DISCLAIMER, /계획용 가정/);
+  assert.match(Model.PLAN_DISCLAIMER, /POS 데이터에서 추정된 값이 아닙니다/);
+  assert.equal(Model.sourceLabel("DEFAULT"), "계획용 가정");
+});
+
+test("evidence quality wording explains what uncalibrated means", () => {
+  assert.equal(
+    Model.evidenceLabel({ label: "LOW", validation: { empirically_calibrated: false } }),
+    "낮음 (실제 결과로 검증 전)",
+  );
+  assert.equal(Model.evidenceLabel({ label: "HIGH", validation: { empirically_calibrated: true } }), "높음");
+  assert.equal(Model.evidenceLabel(null), "-");
+});
+
+test("bundle effects are grouped into the three effects users can reason about", () => {
+  const groups = new Set(Model.BUNDLE_RATE_FIELDS.map(Model.effectGroup));
+  assert.deepEqual([...groups].sort(), ["다른 메뉴 잠식 효과", "세트 전환 효과", "신규 수요 효과"]);
+});
+
+test("plan assumptions table and disclaimer exist only inside the collapsed advanced block", () => {
+  const html = read("index.html");
+  const advanced = html.match(/<details class="advanced-options" id="bundle-advanced">[\s\S]*?<\/details>/)[0];
+  assert.ok(advanced.includes('id="bundle-plan-values"'));
+  const outside = html.replace(advanced, "");
+  assert.doesNotMatch(outside, /bundle-plan-rows|plan-table/);
+  assert.match(outside, /계획용 가정이며 실제 POS 데이터에서 추정된 값이 아닙니다/);
+});
+
+test("tables switch to labeled cards on narrow screens and debug cells stay hidden", () => {
+  const css = read("assets/styles.css");
+  assert.match(css, /@media \(max-width: 900px\)[\s\S]*attr\(data-label\)/);
+  assert.match(css, /body:not\(\[data-debug="1"\]\) \[data-debug-only\] \{ display: none !important; \}/);
+});
+
+test("engine grade codes are translated without changing the sentence", () => {
+  assert.equal(
+    Model.plainText("근거 품질이 MEDIUM 이상이다. LOW와 HIGH는 다르다."),
+    "근거 품질이 보통 이상이다. 낮음와 높음는 다르다.",
+  );
+  assert.equal(Model.plainText("개선확률이 75% 이상"), "개선확률이 75% 이상");
+  assert.equal(Model.plainText(undefined), "");
 });

@@ -8,15 +8,50 @@
   "use strict";
 
   const ANALYSIS_STATUS = Object.freeze({
-    ANALYZABLE: { label: "분석 가능", tone: "ok" },
-    INSUFFICIENT_PRICE_VARIATION: { label: "가격 변화 데이터 부족", tone: "wait" },
-    DATA_COLLECTING: { label: "데이터 수집 중", tone: "wait" },
+    ANALYZABLE: {
+      label: "분석 가능",
+      tone: "ok",
+      message: "가격 시뮬레이션을 사용할 수 있습니다.",
+    },
+    INSUFFICIENT_PRICE_VARIATION: {
+      label: "가격 변화 데이터 부족",
+      tone: "wait",
+      message: "가격을 바꿔 판매한 기록이 부족해 가격 시뮬레이션을 사용할 수 없습니다.",
+    },
+    DATA_COLLECTING: {
+      label: "데이터 수집 중",
+      tone: "wait",
+      message:
+        "아직 판매·가격 변경 데이터가 충분하지 않아 가격 전략 시뮬레이션을 사용할 수 없습니다.",
+    },
   });
+  // 가정의 출처. 계획용 가정은 실제 POS 데이터에서 추정한 값이 아니다.
   const SOURCE_LABELS = Object.freeze({
-    USER: "직접 입력",
+    USER: "직접 입력한 가정",
     ENGINE: "엔진 값",
-    DEFAULT: "계획용 기본값",
-    POS_HISTORY: "POS 원가 이력",
+    DEFAULT: "계획용 가정",
+  });
+  const COST_SOURCE_LABELS = Object.freeze({
+    USER: "직접 수정한 원가",
+    POS_HISTORY: "POS 기준 원가",
+  });
+  const PLAN_DISCLAIMER = "계획용 가정이며 실제 POS 데이터에서 추정된 값이 아닙니다.";
+  const DECISION_GUIDANCE = Object.freeze({
+    RECOMMEND: "실행을 검토해 볼 만한 전략입니다.",
+    EXPERIMENT: "전면 적용보다 작게 시험해 본 뒤 결정하세요.",
+    HOLD: "지금은 바꾸지 않는 편이 안전합니다.",
+  });
+  const EFFECT_GROUPS = Object.freeze({
+    take_rate: "세트 전환 효과",
+    copurchase_take_rate: "세트 전환 효과",
+    incremental_demand_rate: "신규 수요 효과",
+    cannibalization_rate: "다른 메뉴 잠식 효과",
+  });
+  const RATE_LABELS = Object.freeze({
+    take_rate: "세트를 고르는 단품 고객 비율",
+    copurchase_take_rate: "세트로 바꾸는 기존 동시구매 고객 비율",
+    incremental_demand_rate: "세트 때문에 새로 생기는 주문 비율",
+    cannibalization_rate: "다른 메뉴에서 옮겨 오는 주문 비율",
   });
   const CATEGORY_LABELS = Object.freeze({ MAIN: "메인", SIDE: "사이드", DRINK: "음료" });
   const CHANNEL_LABELS = Object.freeze({ STORE: "매장", DELIVERY: "배달" });
@@ -43,7 +78,33 @@
   }
 
   function analysisInfo(status) {
-    return ANALYSIS_STATUS[status] || { label: String(status || "확인 필요"), tone: "wait" };
+    return (
+      ANALYSIS_STATUS[status] || {
+        label: "확인 필요",
+        tone: "wait",
+        message: "분석 상태를 확인하지 못했습니다.",
+      }
+    );
+  }
+
+  function decisionGuidance(action) {
+    return DECISION_GUIDANCE[action] || "";
+  }
+
+  /** 근거 품질을 일반 용어로 바꾼다. 미보정은 실제 결과로 아직 검증되지 않았다는 뜻이다. */
+  function evidenceLabel(quality) {
+    if (!quality) return "-";
+    const labels = { HIGH: "높음", MEDIUM: "보통", LOW: "낮음" };
+    const level = labels[quality.label] || "확인 필요";
+    return quality.validation?.empirically_calibrated === false
+      ? `${level} (실제 결과로 검증 전)`
+      : level;
+  }
+
+  /** 엔진 설명문 속 등급 코드를 화면 용어로 바꾼다. 문장의 의미와 숫자는 그대로 둔다. */
+  function plainText(text) {
+    const levels = { HIGH: "높음", MEDIUM: "보통", LOW: "낮음" };
+    return String(text ?? "").replace(/\b(HIGH|MEDIUM|LOW)\b/g, (code) => levels[code]);
   }
 
   function isPriceAnalyzable(menu) {
@@ -179,15 +240,21 @@
   }
 
   function sourceLabel(source) {
-    return SOURCE_LABELS[source] || String(source || "");
+    return SOURCE_LABELS[source] || "확인 필요";
+  }
+
+  function costSourceLabel(source) {
+    return COST_SOURCE_LABELS[source] || "확인 필요";
   }
 
   function costBasisLabel(basis) {
     if (!basis) return "";
     const won = `${Math.round(basis.unit_cost).toLocaleString("ko-KR")}원`;
-    return basis.source === "USER"
-      ? `식재료 원가 ${won} (직접 수정한 값)`
-      : `식재료 원가 ${won} (POS 원가 이력)`;
+    return `식재료 원가 ${won} (${costSourceLabel(basis.source)})`;
+  }
+
+  function effectGroup(field) {
+    return EFFECT_GROUPS[field] || "확인할 수 없는 값";
   }
 
   /** 위치 기능은 다음 단계에서 연결한다. 지금은 상태 구조와 안내 문구만 둔다. */
@@ -205,7 +272,7 @@
 
   function describeLocation(state) {
     if (state.status === "CONFIGURED" && state.store) return `${state.store.name} 위치 사용 중`;
-    return "위치 기능 준비 중 · 현재는 최근 관측 날씨를 사용합니다.";
+    return "위치 기능 준비 중입니다.";
   }
 
   return {
@@ -214,19 +281,26 @@
     CATEGORY_LABELS,
     CHANNEL_LABELS,
     MAX_SCENARIOS,
+    PLAN_DISCLAIMER,
+    RATE_LABELS,
     analysisInfo,
     buildBundleRequest,
     buildPriceRequest,
     bundleMainMenus,
     bundleMenus,
     costBasisLabel,
+    costSourceLabel,
     createLocationState,
+    decisionGuidance,
     describeLocation,
+    effectGroup,
+    evidenceLabel,
     executionDefaults,
     fieldVisibility,
     isDebugMode,
     isPriceAnalyzable,
     parseRatePercent,
+    plainText,
     planningAssumptions,
     priceMenus,
     priceScenarios,

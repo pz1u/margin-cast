@@ -194,7 +194,7 @@ function renderMessage(message) {
   }
 
   article.append(createElement("p", "", message.text));
-  if (message.kind === "rejected") {
+  if (message.kind === "rejected" || message.kind === "error") {
     const retry = createElement("button", "retry-button", "다시 시도");
     retry.type = "button";
     retry.addEventListener("click", () => controller.retry());

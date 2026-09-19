@@ -41,17 +41,17 @@
         <p class="page-copy">POS 데이터와 메뉴 원가를 기준으로 가격·세트 전략의 이익 범위를 실행 전에 비교합니다.</p>
       </div>
 
-      <p class="notice-strip" id="demo-notice"><strong>데모</strong><span>매장 데이터 상태를 확인하는 중입니다.</span></p>
+      <p class="notice-strip is-info" id="demo-notice"><strong>데모</strong><span>매장 데이터 상태를 확인하는 중입니다.</span></p>
 
       <section class="block" aria-labelledby="pos-title">
         <div class="block-head"><h2 id="pos-title">매장 데이터 상태</h2><span class="tag" id="pos-tag">확인 중</span></div>
         <dl class="status-grid" id="status-grid">
-          <div><dt>POS 연동 상태</dt><dd id="st-connection">-</dd></div>
-          <div><dt>최근 동기화</dt><dd id="st-synced">-</dd></div>
-          <div><dt>주문 데이터</dt><dd id="st-orders">-</dd></div>
-          <div><dt>메뉴 개수</dt><dd id="st-menus">-</dd></div>
-          <div><dt>분석 가능 메뉴</dt><dd id="st-analyzable">-</dd></div>
-          <div><dt>데이터 출처</dt><dd id="st-dataset">-</dd></div>
+          <div><dt>POS 연동 상태</dt><dd id="st-connection">-</dd><small id="st-connection-note"></small></div>
+          <div><dt>최근 동기화</dt><dd id="st-synced">-</dd><small id="st-synced-note"></small></div>
+          <div><dt>주문 데이터</dt><dd id="st-orders">-</dd><small id="st-orders-note"></small></div>
+          <div><dt>메뉴 개수</dt><dd id="st-menus">-</dd><small id="st-menus-note"></small></div>
+          <div><dt>분석 가능 메뉴</dt><dd id="st-analyzable">-</dd><small id="st-analyzable-note"></small></div>
+          <div><dt>데이터 출처</dt><dd id="st-dataset">-</dd><small id="st-dataset-note"></small></div>
         </dl>
         <div class="block-actions">
           <button class="text-button" type="button" data-goto="menus">메뉴 관리에서 원가 확인하기 →</button>
@@ -72,7 +72,7 @@
         <section class="block" aria-labelledby="location-title">
           <div class="block-head"><h2 id="location-title">매장 위치</h2><span class="tag">준비 중</span></div>
           <p class="location-status" id="location-status"></p>
-          <p class="hint">현재 위치 사용과 매장 검색은 다음 단계에서 연결합니다. 그 전까지 날씨는 최근 관측값을 기준으로 합니다.</p>
+          <p class="hint">현재 위치 사용과 매장 검색은 다음 단계에서 제공됩니다. 그 전까지 가격 분석은 최근 관측 날씨를 기준으로 합니다.</p>
         </section>
       </div>
     </section>
@@ -91,13 +91,16 @@
         <button class="solid-button" type="button" id="add-menu-toggle" aria-expanded="false" aria-controls="add-menu-form">+ 메뉴 추가</button>
       </div>
 
+      <p class="formula-note">원가율 = 식재료 원가 ÷ 판매가 · 단품 기여이익 = 판매가 − 식재료 원가 − 수수료</p>
+      <p class="form-message" id="menu-message" role="alert"></p>
+
       <form class="block add-menu" id="add-menu-form" hidden>
         <div class="block-head"><h2>새 메뉴 추가</h2></div>
         <div class="field-grid">
           <label>메뉴명<input id="new-name" maxlength="30" required></label>
           <label>카테고리<select id="new-category"><option value="MAIN">메인</option><option value="SIDE">사이드</option><option value="DRINK">음료</option></select></label>
           <label>판매가<span class="input-unit"><input id="new-price" type="number" min="1000" max="100000" step="100" required><small>원</small></span></label>
-          <label>식재료 원가<span class="input-unit"><input id="new-cost" type="number" min="0" max="100000" step="10" required><small>원</small></span></label>
+          <label>식재료 원가 <small class="label-hint">(1개당 재료비)</small><span class="input-unit"><input id="new-cost" type="number" min="0" max="100000" step="10" required><small>원</small></span></label>
           <fieldset class="channel-field">
             <legend>판매 채널</legend>
             <label class="check"><input type="checkbox" name="new-channel" value="STORE" checked><span>매장</span></label>
@@ -132,8 +135,7 @@
           <tbody id="menu-rows"></tbody>
         </table>
       </div>
-      <p class="hint">판매가는 POS 값이라 이 화면에서 수정하지 않습니다. 단품 기여이익은 매장·배달 판매 비중과 수수료를 반영한 1개당 값입니다.</p>
-      <p class="form-message" id="menu-message" role="alert"></p>
+      <p class="hint">판매가는 POS 값이라 이 화면에서 수정하지 않습니다. 단품 기여이익은 매장·배달 판매 비중과 수수료를 반영한 1개당 값입니다. 원가를 고친 뒤 Enter 또는 [저장]을 누르세요.</p>
     </section>
 
     <section class="page" id="strategy-panel" role="tabpanel" aria-labelledby="strategy-tab" hidden>
@@ -146,11 +148,11 @@
       </div>
 
       <div class="subtabs" role="tablist" aria-label="전략 종류">
-        <button class="subtab is-active" id="price-subtab" role="tab" aria-selected="true" data-strategy="price">가격 · 할인</button>
-        <button class="subtab" id="bundle-subtab" role="tab" aria-selected="false" data-strategy="bundle">세트 구성</button>
+        <button class="subtab is-active" id="price-subtab" role="tab" aria-selected="true" tabindex="0" aria-controls="price-strategy" data-strategy="price">가격 · 할인</button>
+        <button class="subtab" id="bundle-subtab" role="tab" aria-selected="false" tabindex="-1" aria-controls="bundle-strategy" data-strategy="bundle">세트 구성</button>
       </div>
 
-      <div class="simulator" id="price-strategy">
+      <div class="simulator" id="price-strategy" role="tabpanel" aria-labelledby="price-subtab">
         <form class="control-panel" id="price-form">
           <div class="field-grid">
             <label class="wide">메뉴<select id="price-menu" required></select></label>
@@ -160,7 +162,7 @@
           <p class="cost-line" id="price-cost-line"></p>
 
           <div class="scenario-heading">
-            <div><span class="field-label">변경 가격 또는 할인</span><p class="hint">현재 가격은 자동으로 함께 계산합니다.</p></div>
+            <div><span class="field-label">변경 가격 또는 할인</span><p class="hint">현재 가격은 자동으로 함께 비교합니다. 할인은 정가에서 깎아 주는 금액입니다.</p></div>
             <button class="text-button" type="button" id="add-scenario">+ 대안 추가</button>
           </div>
           <div class="scenario-list" id="scenario-list"></div>
@@ -186,25 +188,26 @@
           <div class="result-content" id="price-result" hidden>
             <p class="stale-note" id="price-stale" hidden>입력이 바뀌었습니다. 아래 결과는 이전 조건의 계산입니다. 다시 계산하세요.</p>
             <p class="recommendation-name" id="price-recommendation-name"></p>
-            <p class="recommendation-reason" id="price-recommendation-reason"></p>
+            <p class="recommendation-guidance" id="price-guidance"></p>
             <div class="metric-grid">
-              <div class="metric-primary"><span>기대 기여이익 변화</span><strong id="price-profit-delta">-</strong></div>
-              <div><span>80% 예상 범위</span><strong id="price-profit-range">-</strong></div>
-              <div><span>개선확률</span><strong id="price-success">-</strong></div>
-              <div><span>근거 품질</span><strong id="price-confidence">-</strong></div>
+              <div class="metric-primary"><span>기대 기여이익 변화</span><strong id="price-profit-delta">-</strong><small>현재 가격 대비, 선택 기간 동안의 기대값</small></div>
+              <div><span>80% 예상 범위</span><strong id="price-profit-range">-</strong><small>10번 중 8번은 이 범위 안</small></div>
+              <div><span>개선확률</span><strong id="price-success">-</strong><small>현재 가격보다 이익이 늘 가능성</small></div>
+              <div><span>근거 품질</span><strong id="price-confidence">-</strong><small>예측이 얼마나 탄탄한 데이터에 기대는지</small></div>
             </div>
+            <p class="recommendation-reason"><span>판단 이유</span><em id="price-recommendation-reason"></em></p>
             <div class="comparison-block">
               <div class="result-subheading"><h4>전략별 기여이익</h4><span>막대는 기대값 기준</span></div>
               <div class="bar-chart" id="price-chart"></div>
             </div>
-            <aside class="evidence-note"><span>해석 기준</span><p id="price-evidence"></p></aside>
+            <aside class="evidence-note"><span>근거 자세히</span><p id="price-evidence"></p></aside>
             <aside class="evidence-note"><span>계산 기준</span><p id="price-basis"></p></aside>
             <details class="debug-box" data-debug-only><summary>모델 파라미터</summary><pre id="price-debug"></pre></details>
           </div>
         </section>
       </div>
 
-      <div class="simulator" id="bundle-strategy" hidden>
+      <div class="simulator" id="bundle-strategy" role="tabpanel" aria-labelledby="bundle-subtab" hidden>
         <form class="control-panel" id="bundle-form">
           <div class="field-grid">
             <label class="wide">주메뉴<select id="bundle-main" required></select></label>
@@ -229,22 +232,28 @@
           </div>
 
           <section class="observation" aria-labelledby="observation-title" aria-live="polite">
-            <h4 id="observation-title">POS에서 확인된 값</h4>
+            <h4 id="observation-title">POS에서 확인된 값 <small>(과거 주문 기준)</small></h4>
             <dl class="observed-list" id="bundle-observed"></dl>
             <h4>판매 데이터만으로 확인할 수 없는 값</h4>
-            <p class="hint">아래 값은 과거 주문만으로 알 수 없어 계획용 가정으로만 비교합니다.</p>
+            <p class="hint">세트를 팔았을 때 어떻게 달라질지는 과거 주문만으로 알 수 없습니다. 아래 효과는 계획용 가정으로만 비교합니다.</p>
             <ul class="unknown-list" id="bundle-unknown"></ul>
           </section>
 
           <button class="solid-button block-button" id="bundle-plan-submit" type="button">계획 시나리오로 비교</button>
+          <p class="hint plan-disclaimer">보수·기준·낙관 시나리오는 계획용 가정이며 실제 POS 데이터에서 추정된 값이 아닙니다.</p>
           <details class="advanced-options" id="bundle-advanced">
             <summary>고급 가정 직접 입력</summary>
-            <p class="hint">네 값을 모두 직접 입력해야 계산합니다. 비워 둔 값은 채우지 않습니다.</p>
+            <p class="hint">네 값을 모두 직접 입력해야 계산합니다. 비워 둔 값은 채우지 않으며, 입력한 값은 직접 입력한 가정으로 표시됩니다.</p>
             <div class="field-grid" id="bundle-rate-grid">
-              <label>단품 고객 전환율<span class="input-unit"><input data-rate="take_rate" type="number" min="0" max="100" step="1"><small>%</small></span></label>
-              <label>기존 동시구매 전환율<span class="input-unit"><input data-rate="copurchase_take_rate" type="number" min="0" max="100" step="1"><small>%</small></span></label>
-              <label>신규 수요율<span class="input-unit"><input data-rate="incremental_demand_rate" type="number" min="0" max="100" step="1"><small>%</small></span></label>
-              <label>다른 메뉴 잠식률<span class="input-unit"><input data-rate="cannibalization_rate" type="number" min="0" max="100" step="1"><small>%</small></span></label>
+              <label>세트를 고르는 단품 고객 비율<span class="input-unit"><input data-rate="take_rate" type="number" min="0" max="100" step="1"><small>%</small></span></label>
+              <label>세트로 바꾸는 기존 동시구매 고객 비율<span class="input-unit"><input data-rate="copurchase_take_rate" type="number" min="0" max="100" step="1"><small>%</small></span></label>
+              <label>세트 때문에 새로 생기는 주문 비율<span class="input-unit"><input data-rate="incremental_demand_rate" type="number" min="0" max="100" step="1"><small>%</small></span></label>
+              <label>다른 메뉴에서 옮겨 오는 주문 비율<span class="input-unit"><input data-rate="cannibalization_rate" type="number" min="0" max="100" step="1"><small>%</small></span></label>
+            </div>
+            <div class="plan-values" id="bundle-plan-values" hidden>
+              <p class="plan-values-title">계획 시나리오가 사용하는 가정 (참고)</p>
+              <div class="table-wrap"><table class="plan-table"><thead><tr><th scope="col">시나리오</th><th scope="col" class="num">단품 전환</th><th scope="col" class="num">동시구매 전환</th><th scope="col" class="num">신규 수요</th><th scope="col" class="num">다른 메뉴 잠식</th></tr></thead><tbody id="bundle-plan-rows"></tbody></table></div>
+              <p class="hint" id="bundle-plan-disclaimer"></p>
             </div>
             <button class="ghost-button" id="bundle-manual-submit" type="button">직접 입력 값으로 계산</button>
           </details>
@@ -259,13 +268,14 @@
           </div>
           <div class="result-content" id="bundle-result" hidden>
             <p class="stale-note" id="bundle-stale" hidden>입력이 바뀌었습니다. 아래 결과는 이전 조건의 계산입니다. 다시 계산하세요.</p>
+            <p class="plan-banner" id="bundle-plan-banner"></p>
             <div class="table-wrap">
               <table class="bundle-table">
                 <thead><tr><th scope="col">시나리오</th><th scope="col" class="num">기대 기여이익 변화</th><th scope="col" class="num">80% 범위</th><th scope="col" class="num">개선확률</th><th scope="col">근거 품질</th><th scope="col">판단</th></tr></thead>
                 <tbody id="bundle-rows"></tbody>
               </table>
             </div>
-            <aside class="evidence-note"><span>해석 기준</span><p id="bundle-evidence"></p></aside>
+            <aside class="evidence-note"><span>근거 자세히</span><p id="bundle-evidence"></p></aside>
             <aside class="evidence-note"><span>계산 기준</span><p id="bundle-basis"></p></aside>
           </div>
         </section>
@@ -320,7 +330,7 @@
             name="message"
             rows="1"
             maxlength="2000"
-            placeholder="예: 치킨마요를 9,500원으로 올리면 어때?"
+            placeholder="예: 치킨마요를 9,500원으로 올리면?"
             required
           ></textarea>
           <button class="send-button" id="send-button" type="submit" aria-label="메시지 보내기">

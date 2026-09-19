@@ -88,15 +88,27 @@
   // ------------------------------------------------------------- dashboard
   function renderDashboard() {
     const store = state.profile.store;
-    byId("st-connection").textContent = store.connected ? "연동됨 · 데모" : "연동 안 됨";
-    byId("pos-tag").textContent = store.uses_actual_store_data ? "실제 POS" : "합성 데이터 데모";
+    const demo = !store.uses_actual_store_data;
+    byId("st-connection").textContent = store.connected ? "연동됨" : "연동 안 됨";
+    byId("st-connection-note").textContent = demo ? "데모: 실제 POS 대신 합성 데이터를 사용 중" : "";
+    byId("pos-tag").textContent = demo ? "데모 데이터" : "실제 POS";
     byId("st-synced").textContent = store.last_synced_at
       ? new Date(store.last_synced_at).toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" })
       : "-";
+    byId("st-synced-note").textContent = demo ? "데모 데이터를 불러온 시각" : "";
     byId("st-orders").textContent = `${number.format(store.order_count)}건`;
+    byId("st-orders-note").textContent = store.last_order_at
+      ? `마지막 주문 ${new Date(store.last_order_at).toLocaleDateString("ko-KR", { dateStyle: "medium" })}`
+      : "";
     byId("st-menus").textContent = `${store.menu_count}개`;
+    byId("st-menus-note").textContent = store.custom_menu_count
+      ? `POS 메뉴 ${store.menu_count - store.custom_menu_count}개 + 직접 추가 ${store.custom_menu_count}개`
+      : "POS에서 가져온 메뉴";
     byId("st-analyzable").textContent = `${store.analyzable_menu_count}개`;
-    byId("st-dataset").textContent = store.dataset_version;
+    byId("st-analyzable-note").textContent =
+      `전체 ${store.menu_count}개 중 가격 시뮬레이션을 쓸 수 있는 메뉴`;
+    byId("st-dataset").textContent = demo ? "합성 데이터" : "POS";
+    byId("st-dataset-note").textContent = store.dataset_version;
     byId("demo-notice").querySelector("span").textContent = store.demo_notice;
 
     const rows = byId("fee-rows");
@@ -120,15 +132,20 @@
   }
 
   function sourceBadge(menu) {
-    if (menu.source === "MANUAL") return "직접 입력";
-    return menu.cost_source === "USER" ? "수정됨" : "POS 원가 이력";
+    return menu.source === "MANUAL" ? "직접 입력한 원가" : Model.costSourceLabel(menu.cost_source);
+  }
+
+  function labeled(cell, label) {
+    cell.dataset.label = label;
+    return cell;
   }
 
   function renderMenuRow(menu) {
     const row = make("tr");
     row.dataset.menuId = menu.menu_id;
-    const debugCell = make("td", "", menu.menu_id);
+    const debugCell = make("td", "debug-cell", menu.menu_id);
     debugCell.dataset.debugOnly = "";
+    labeled(debugCell, "내부 ID");
     row.append(debugCell);
 
     const nameCell = make("td", "menu-name");
@@ -143,9 +160,9 @@
     );
     row.append(nameCell);
 
-    row.append(make("td", "num", won(menu.list_price)));
+    row.append(labeled(make("td", "num", won(menu.list_price)), "판매가"));
 
-    const costCell = make("td", "num cost-cell");
+    const costCell = labeled(make("td", "num cost-cell"), "식재료 원가");
     const input = make("input", "cost-input");
     input.type = "number";
     input.min = "0";
@@ -156,9 +173,14 @@
     const save = make("button", "mini-button", "저장");
     save.type = "button";
     save.disabled = true;
+    save.setAttribute("aria-label", `${menu.menu_name} 원가 저장`);
     costCell.append(input, save);
     if (menu.source === "POS" && menu.cost_source === "USER") {
-      const restore = make("button", "text-button restore-button", `POS 원가로 복원 (${won(menu.pos_ingredient_cost)})`);
+      const restore = make(
+        "button",
+        "text-button restore-button",
+        `POS 기준값으로 되돌리기 (${won(menu.pos_ingredient_cost)})`,
+      );
       restore.type = "button";
       restore.addEventListener("click", () => saveCost(menu.menu_id, { reset: true }, restore));
       costCell.append(restore);
@@ -166,14 +188,14 @@
     costCell.append(make("small", `cost-source is-${menu.cost_source.toLowerCase()}`, sourceBadge(menu)));
     row.append(costCell);
 
-    row.append(make("td", "num cell-rate"));
-    row.append(make("td", "num cell-contribution"));
+    row.append(labeled(make("td", "num cell-rate"), "원가율"));
+    row.append(labeled(make("td", "num cell-contribution"), "단품 기여이익"));
     economicsCells(row, menu.economics);
 
     const analysis = Model.analysisInfo(menu.analysis.status);
-    const statusCell = make("td", "analysis-cell");
+    const statusCell = labeled(make("td", "analysis-cell"), "분석 상태");
     statusCell.append(make("span", `chip is-${analysis.tone}`, analysis.label));
-    statusCell.append(make("small", "", menu.analysis.message));
+    statusCell.append(make("small", "", analysis.message));
     if (menu.analysis.status === "ANALYZABLE" && menu.cost_source === "USER") {
       statusCell.append(make("small", "engine-note", "수정한 원가가 기여이익 시뮬레이션에 반영됩니다."));
     }
@@ -213,9 +235,16 @@
         }),
       );
     });
-    save.addEventListener("click", () =>
-      saveCost(menu.menu_id, { ingredient_cost: Number(input.value) }, save),
-    );
+    const commit = () => {
+      if (!save.disabled) saveCost(menu.menu_id, { ingredient_cost: Number(input.value) }, save);
+    };
+    save.addEventListener("click", commit);
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commit();
+      }
+    });
     return row;
   }
 
@@ -255,6 +284,7 @@
   }
 
   async function deleteMenu(menu, button) {
+    byId("menu-message").classList.remove("is-success");
     button.disabled = true;
     try {
       await post("/api/store/menus/delete", { menu_id: menu.menu_id });
@@ -308,7 +338,7 @@
     const button = byId("add-menu-submit");
     button.disabled = true;
     try {
-      await post("/api/store/menus", {
+      const added = await post("/api/store/menus", {
         menu_name: byId("new-name").value.trim(),
         category: byId("new-category").value,
         list_price: Number(byId("new-price").value),
@@ -322,6 +352,11 @@
       byId("menu-message").textContent =
         "메뉴를 추가했습니다. 판매·가격 변경 데이터가 쌓이기 전까지 가격 시뮬레이션은 사용할 수 없습니다.";
       byId("menu-message").classList.add("is-success");
+      const row = byId("menu-rows").querySelector(`tr[data-menu-id="${added.menu.menu_id}"]`);
+      if (row) {
+        row.classList.add("is-new");
+        row.scrollIntoView({ block: "center" });
+      }
     } catch (error) {
       message.textContent = error.message;
     } finally {
@@ -354,12 +389,21 @@
       const active = tab.dataset.strategy === kind;
       tab.classList.toggle("is-active", active);
       tab.setAttribute("aria-selected", String(active));
+      tab.tabIndex = active ? 0 : -1;
     });
     byId("price-strategy").hidden = kind !== "price";
     byId("bundle-strategy").hidden = kind !== "bundle";
   }
-  document.querySelectorAll(".subtab").forEach((tab) => {
+  const subtabs = [...document.querySelectorAll(".subtab")];
+  subtabs.forEach((tab, index) => {
     tab.addEventListener("click", () => showStrategy(tab.dataset.strategy));
+    tab.addEventListener("keydown", (event) => {
+      const next = { ArrowRight: subtabs[(index + 1) % subtabs.length], ArrowLeft: subtabs[(index + subtabs.length - 1) % subtabs.length] }[event.key];
+      if (!next) return;
+      event.preventDefault();
+      showStrategy(next.dataset.strategy);
+      next.focus();
+    });
   });
 
   function setDecision(element, action) {
@@ -369,10 +413,7 @@
   }
 
   function evidenceText(quality) {
-    if (!quality) return "-";
-    const labels = { HIGH: "높음", MEDIUM: "보통", LOW: "낮음" };
-    const calibrated = quality.validation?.empirically_calibrated;
-    return `${labels[quality.label] || quality.label}${calibrated === false ? " · 미보정" : ""}`;
+    return Model.evidenceLabel(quality);
   }
 
   // price ---------------------------------------------------------------
@@ -402,7 +443,7 @@
   function renderPriceCostLine() {
     const menu = selectedPriceMenu();
     byId("price-cost-line").textContent = menu
-      ? Model.costBasisLabel({ unit_cost: menu.ingredient_cost, source: menu.cost_source === "USER" ? "USER" : "POS_HISTORY" })
+      ? Model.costBasisLabel({ unit_cost: menu.ingredient_cost, source: menu.cost_source })
       : "";
   }
 
@@ -480,7 +521,8 @@
     byId("price-result").hidden = false;
     setDecision(byId("price-decision"), action.action);
     byId("price-recommendation-name").textContent = action.name;
-    byId("price-recommendation-reason").textContent = action.reason;
+    byId("price-guidance").textContent = Model.decisionGuidance(action.action);
+    byId("price-recommendation-reason").textContent = Model.plainText(action.reason);
     byId("price-profit-delta").textContent = won(recommended.profit_delta.mean, true);
     byId("price-profit-range").textContent =
       `${won(recommended.profit_delta.p10, true)} ~ ${won(recommended.profit_delta.p90, true)}`;
@@ -490,10 +532,10 @@
     byId("price-evidence").textContent = quality?.evidence
       ? `가격 실험 ${quality.evidence.price_events}회, 관측 결제가격 ` +
         `${won(quality.evidence.observed_paid_price_range[0])} ~ ${won(quality.evidence.observed_paid_price_range[1])}. ` +
-        `${quality.interpretation} ${quality.validation.statement}`
-      : payload.interpretation_notes.join(" ");
+        Model.plainText(`${quality.interpretation} ${quality.validation.statement}`)
+      : Model.plainText(payload.interpretation_notes.join(" "));
     byId("price-basis").textContent =
-      `${Model.costBasisLabel(payload.cost_basis)}. 수요 예측과 가격탄력성은 원가 수정의 영향을 받지 않습니다. ` +
+      `${Model.costBasisLabel(payload.cost_basis)}. 원가를 고쳐도 예상 판매량은 달라지지 않습니다. ` +
       `${payload.data_provenance.warning}`;
     byId("price-debug").textContent = JSON.stringify(
       { model: payload.model, cost_basis: payload.cost_basis, request: payload.request },
@@ -589,6 +631,7 @@
     message.textContent = "";
     state.observation = null;
     setBundleActions(false);
+    byId("bundle-plan-values").hidden = true;
     observed.replaceChildren();
     unknown.replaceChildren();
     byId("bundle-price-note").textContent = "";
@@ -625,7 +668,7 @@
       ["주메뉴 판매량", `${number.format(facts.main_units_sold)}개`],
       ["주메뉴 주문", `${number.format(facts.main_orders)}건`],
       ["함께 구매된 횟수", `${number.format(facts.copurchase_orders)}건`],
-      ["기존 동시구매율", percent(facts.copurchase_rate)],
+      ["기존 동시구매율 (주문 중 함께 산 비율)", percent(facts.copurchase_rate)],
     ].forEach(([label, value]) => {
       const item = make("div");
       item.append(make("dt", "", label), make("dd", "", value));
@@ -633,11 +676,33 @@
     });
     observation.unidentifiable.forEach((item) => {
       const line = make("li");
-      line.append(make("strong", "", item.label), make("small", "", item.note));
+      line.append(
+        make("strong", "", Model.effectGroup(item.field)),
+        make("span", "", Model.RATE_LABELS[item.field] || item.label),
+        make("small", "", item.note),
+      );
       byId("bundle-unknown").append(line);
     });
+    renderPlanValues(observation);
     byId("bundle-price-note").textContent = `구성 메뉴 정가 합계 ${won(observation.list_price_total)}`;
     setBundleActions(true);
+  }
+
+  function renderPlanValues(observation) {
+    const rows = byId("bundle-plan-rows");
+    rows.replaceChildren();
+    observation.planning_scenarios.forEach((scenario) => {
+      const tr = make("tr");
+      const name = make("th", "", scenario.label);
+      name.scope = "row";
+      tr.append(name);
+      Model.BUNDLE_RATE_FIELDS.forEach((field) => {
+        tr.append(make("td", "num", percent(scenario.assumptions[field], 0)));
+      });
+      rows.append(tr);
+    });
+    byId("bundle-plan-disclaimer").textContent = Model.PLAN_DISCLAIMER;
+    byId("bundle-plan-values").hidden = false;
   }
 
   function bundleName(label) {
@@ -693,11 +758,11 @@
       name.scope = "row";
       name.append(make("strong", "", row.label), make("small", "source-tag", Model.sourceLabel(row.source)));
       tr.append(name);
-      tr.append(make("td", "num", won(strategy.profit_delta.mean, true)));
-      tr.append(make("td", "num", `${won(strategy.profit_delta.p10, true)} ~ ${won(strategy.profit_delta.p90, true)}`));
-      tr.append(make("td", "num", percent(strategy.success_probability)));
-      tr.append(make("td", "", evidenceText(strategy.evidence_quality)));
-      const decisionCell = make("td");
+      tr.append(labeled(make("td", "num", won(strategy.profit_delta.mean, true)), "기대 기여이익 변화"));
+      tr.append(labeled(make("td", "num", `${won(strategy.profit_delta.p10, true)} ~ ${won(strategy.profit_delta.p90, true)}`), "80% 범위"));
+      tr.append(labeled(make("td", "num", percent(strategy.success_probability)), "개선확률"));
+      tr.append(labeled(make("td", "", evidenceText(strategy.evidence_quality)), "근거 품질"));
+      const decisionCell = labeled(make("td"), "판단");
       const badge = make("span", "decision-badge");
       setDecision(badge, payload.decision.action);
       decisionCell.append(badge);
@@ -705,14 +770,18 @@
       body.append(tr);
     });
     const first = results[0].payload;
+    const usesPlan = results.some(({ row }) => row.source === "DEFAULT");
+    byId("bundle-plan-banner").textContent = usesPlan
+      ? `보수·기준·낙관 결과는 ${Model.PLAN_DISCLAIMER}`
+      : "직접 입력한 가정으로 계산한 결과이며 실제 POS 데이터에서 추정된 값이 아닙니다.";
     byId("bundle-evidence").textContent =
       `${first.strategy.evidence_quality.reason} ${first.strategy.evidence_quality.validation.statement}`;
     const names = new Map(menus().map((menu) => [menu.menu_id, menu.menu_name]));
     const costs = first.cost_basis
-      .map((item) => `${names.get(item.menu_id) || item.menu_id} ${won(item.unit_cost)}(${Model.sourceLabel(item.source)})`)
+      .map((item) => `${names.get(item.menu_id) || item.menu_id} ${won(item.unit_cost)}(${Model.costSourceLabel(item.source)})`)
       .join(", ");
     byId("bundle-basis").textContent =
-      `식재료 원가 ${costs}. 세트 비율은 관측값이 아닌 계획용 가정이며 수요 모델은 바뀌지 않습니다. ` +
+      `식재료 원가 ${costs}. 세트 효과 비율은 관측값이 아닌 가정입니다. 원가를 고쳐도 예상 판매량은 달라지지 않습니다. ` +
       `${first.data_provenance.warning}`;
   }
 
