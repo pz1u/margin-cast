@@ -44,6 +44,10 @@ DEFAULT_BUNDLE_SCENARIO = {
 }
 
 
+class InsufficientBundleHistory(ValueError):
+    """선택한 메뉴 조합이 세트 전 주문 이력에 충분히 나타나지 않는다."""
+
+
 def validate_bundle_scenario(scenario):
     required = {
         "name",
@@ -66,7 +70,27 @@ def validate_bundle_scenario(scenario):
             raise ValueError(f"{name}은 0~1 범위여야 합니다.")
 
 
-def build_bundle_evidence(tables, main_menu_id="M01", drink_menu_id="M06"):
+def build_bundle_evidence(
+    tables, main_menu_id="M01", component_menu_ids=("M06",), unit_costs=None
+):
+    """세트 전 주문 이력에서 관측 가능한 장바구니 구간과 가격·원가를 만든다.
+
+    unit_costs는 사용자가 수정한 식재료 원가(menu_id -> 원)다. 없는 메뉴는 원가 이력의 최신값을 쓴다.
+    """
+    component_menu_ids = tuple(component_menu_ids)
+    if not component_menu_ids:
+        raise ValueError("component_menu_ids는 한 개 이상의 메뉴 ID를 포함해야 합니다.")
+    if len(component_menu_ids) != len(set(component_menu_ids)):
+        raise ValueError("component_menu_ids는 중복될 수 없습니다.")
+    if main_menu_id in component_menu_ids:
+        raise ValueError("main_menu_id는 component_menu_ids에 포함될 수 없습니다.")
+    menus = tables["menus"].set_index("menu_id")
+    unknown_ids = sorted({main_menu_id, *component_menu_ids} - set(menus.index))
+    if unknown_ids:
+        raise ValueError(f"존재하지 않는 메뉴 ID가 있습니다: {unknown_ids}")
+    if menus.loc[main_menu_id, "category"] != "MAIN":
+        raise ValueError("main_menu_id는 MAIN 카테고리 메뉴여야 합니다.")
+
     bundle_start = tables["bundles"]["start_date"].min()
     orders = tables["orders"][["order_id", "date", "channel"]]
     items = tables["order_items"].merge(orders, on="order_id", how="left", validate="many_to_one")
@@ -77,14 +101,20 @@ def build_bundle_evidence(tables, main_menu_id="M01", drink_menu_id="M06"):
         menu_ids=("menu_id", set),
         channel=("channel", "first"),
     )
-    chicken = baskets["menu_ids"].map(lambda values: main_menu_id in values)
-    drink = baskets["menu_ids"].map(lambda values: drink_menu_id in values)
+    main = baskets["menu_ids"].map(lambda values: main_menu_id in values)
+    components = baskets["menu_ids"].map(
+        lambda values: all(menu_id in values for menu_id in component_menu_ids)
+    )
     main_ids = set(tables["menus"].loc[tables["menus"]["category"] == "MAIN", "menu_id"])
     other_main = baskets["menu_ids"].map(
         lambda values: main_menu_id not in values and bool(main_ids.intersection(values))
     )
 
     def segment(values):
+        if values.empty:
+            raise InsufficientBundleHistory(
+                "이 조합은 과거에 함께 구매된 주문 이력이 부족해 세트 시뮬레이션을 제공할 수 없습니다."
+            )
         return {
             "orders": int(len(values)),
             "daily_orders": float(len(values) / operating_days),
@@ -99,6 +129,7 @@ def build_bundle_evidence(tables, main_menu_id="M01", drink_menu_id="M06"):
         .astype(float)
         .to_dict()
     )
+    current_cost.update({key: float(value) for key, value in (unit_costs or {}).items()})
     prices = tables["menus"].set_index("menu_id")["initial_list_price"].astype(float).to_dict()
     other_items = history[
         history["order_id"].isin(baskets.index[other_main]) & history["menu_id"].isin(main_ids)
@@ -115,12 +146,20 @@ def build_bundle_evidence(tables, main_menu_id="M01", drink_menu_id="M06"):
     )
     return {
         "observed_days": operating_days,
-        "main_without_drink": segment(baskets[chicken & ~drink]),
-        "main_with_drink": segment(baskets[chicken & drink]),
+        "main_menu_id": main_menu_id,
+        "component_menu_ids": list(component_menu_ids),
+        "main_without_components": segment(baskets[main & ~components]),
+        "main_with_components": segment(baskets[main & components]),
         "other_main": segment(baskets[other_main]),
-        "main_daily_orders": float(chicken.sum() / operating_days),
-        "prices": {"main": prices[main_menu_id], "drink": prices[drink_menu_id]},
-        "costs": {"main": current_cost[main_menu_id], "drink": current_cost[drink_menu_id]},
+        "main_daily_orders": float(main.sum() / operating_days),
+        "prices": {
+            "main": prices[main_menu_id],
+            "components": sum(prices[menu_id] for menu_id in component_menu_ids),
+        },
+        "costs": {
+            "main": current_cost[main_menu_id],
+            "components": sum(current_cost[menu_id] for menu_id in component_menu_ids),
+        },
         "other_main_average": {"price": weighted_price, "cost": weighted_cost},
         "bundle_observed": True,
         "ground_truth_used": False,
@@ -160,8 +199,8 @@ def simulate_bundle(
         opportunities = rng.poisson(mean)
         return rng.binomial(opportunities, rate)
 
-    chicken_only = conversions("main_without_drink", scenario["take_rate"])
-    copurchase = conversions("main_with_drink", scenario["copurchase_take_rate"])
+    main_only = conversions("main_without_components", scenario["take_rate"])
+    copurchase = conversions("main_with_components", scenario["copurchase_take_rate"])
     cannibalized = conversions("other_main", scenario["cannibalization_rate"])
     incremental = rng.poisson(
         evidence["main_daily_orders"]
@@ -172,30 +211,30 @@ def simulate_bundle(
 
     bundle_price = float(scenario["bundle_price"])
     main_price = evidence["prices"]["main"]
-    drink_price = evidence["prices"]["drink"]
+    component_price = evidence["prices"]["components"]
     main_cost = evidence["costs"]["main"]
-    drink_cost = evidence["costs"]["drink"]
+    component_cost = evidence["costs"]["components"]
 
-    fee_chicken = _average_fee_rate(evidence["main_without_drink"]["delivery_share"])
-    fee_copurchase = _average_fee_rate(evidence["main_with_drink"]["delivery_share"])
+    fee_main = _average_fee_rate(evidence["main_without_components"]["delivery_share"])
+    fee_copurchase = _average_fee_rate(evidence["main_with_components"]["delivery_share"])
     fee_other = _average_fee_rate(evidence["other_main"]["delivery_share"])
-    delta_chicken = (
-        bundle_price * (1 - fee_chicken)
-        - (main_cost + drink_cost) * cost_factor
-        - (main_price * (1 - fee_chicken) - main_cost * cost_factor)
+    delta_main = (
+        bundle_price * (1 - fee_main)
+        - (main_cost + component_cost) * cost_factor
+        - (main_price * (1 - fee_main) - main_cost * cost_factor)
     )
-    delta_copurchase = (bundle_price - main_price - drink_price) * (1 - fee_copurchase)
+    delta_copurchase = (bundle_price - main_price - component_price) * (1 - fee_copurchase)
     other = evidence["other_main_average"]
     delta_other = (
         bundle_price * (1 - fee_other)
-        - (main_cost + drink_cost) * cost_factor
+        - (main_cost + component_cost) * cost_factor
         - (other["price"] * (1 - fee_other) - other["cost"] * cost_factor)
     )
     incremental_profit = (
-        bundle_price * (1 - fee_chicken) - (main_cost + drink_cost) * cost_factor
+        bundle_price * (1 - fee_main) - (main_cost + component_cost) * cost_factor
     )
     profit_delta = (
-        chicken_only * delta_chicken
+        main_only * delta_main
         + copurchase * delta_copurchase
         + cannibalized * delta_other
         + incremental * incremental_profit
@@ -216,7 +255,7 @@ def simulate_bundle(
             )
         },
         "orders": {
-            "converted_main_without_drink": summarize_distribution(chicken_only),
+            "converted_main_without_components": summarize_distribution(main_only),
             "converted_existing_copurchase": summarize_distribution(copurchase),
             "cannibalized_other_main": summarize_distribution(cannibalized),
             "incremental": summarize_distribution(incremental),

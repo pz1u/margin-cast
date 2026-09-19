@@ -32,8 +32,8 @@ class BundleSimulationTests(unittest.TestCase):
 
     def test_evidence_excludes_ground_truth_and_has_opportunities(self):
         self.assertFalse(self.evidence["ground_truth_used"])
-        self.assertGreater(self.evidence["main_without_drink"]["orders"], 0)
-        self.assertGreater(self.evidence["main_with_drink"]["orders"], 0)
+        self.assertGreater(self.evidence["main_without_components"]["orders"], 0)
+        self.assertGreater(self.evidence["main_with_components"]["orders"], 0)
         self.assertGreater(self.evidence["other_main"]["orders"], 0)
 
     def test_bundle_simulation_is_reproducible_and_separates_origins(self):
@@ -57,7 +57,7 @@ class BundleSimulationTests(unittest.TestCase):
         self.assertEqual(
             set(first["orders"]),
             {
-                "converted_main_without_drink",
+                "converted_main_without_components",
                 "converted_existing_copurchase",
                 "cannibalized_other_main",
                 "incremental",
