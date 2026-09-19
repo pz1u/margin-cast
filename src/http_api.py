@@ -19,6 +19,7 @@ from src.evidence_quality import (
 from src.experiment_feedback import ExperimentFeedbackError, ExperimentFeedbackStore
 from src.forecast_decision_service import ForecastDecisionError, ForecastDecisionService
 from src.ollama_provider import OllamaProvider
+from src.store_profile import StoreProfileError, StoreProfileService
 
 
 MAX_BODY_BYTES = 64 * 1024
@@ -32,6 +33,28 @@ FEEDBACK_ROUTE = "/api/experiments/feedback"
 FEEDBACK_PLAN_ROUTE = "/api/experiments/plans"
 FEEDBACK_SUMMARY_ROUTE = "/api/experiments/feedback/summary"
 AGENT_CHAT_ROUTE = "/api/agent/chat"
+STORE_PROFILE_ROUTE = "/api/store/profile"
+STORE_MENUS_ROUTE = "/api/store/menus"
+STORE_MENU_COST_ROUTE = "/api/store/menus/cost"
+STORE_MENU_DELETE_ROUTE = "/api/store/menus/delete"
+STORE_BUNDLE_OBSERVATION_ROUTE = "/api/store/bundle/observation"
+STORE_BUNDLE_SIMULATE_ROUTE = "/api/store/bundle/simulate"
+STORE_ROUTES = {
+    (STORE_PROFILE_ROUTE, "GET"),
+    (STORE_MENUS_ROUTE, "POST"),
+    (STORE_MENU_COST_ROUTE, "POST"),
+    (STORE_MENU_DELETE_ROUTE, "POST"),
+    (STORE_BUNDLE_OBSERVATION_ROUTE, "POST"),
+    (STORE_BUNDLE_SIMULATE_ROUTE, "POST"),
+}
+BUNDLE_SIMULATE_FIELDS = {
+    "main_menu_id",
+    "component_menu_ids",
+    "scenario",
+    "horizon_days",
+    "simulations",
+    "seed",
+}
 ERROR_STATUS = {
     "NOT_FOUND": 404,
     "METHOD_NOT_ALLOWED": 405,
@@ -45,6 +68,10 @@ ERROR_STATUS = {
     "FEEDBACK_STORE_UNAVAILABLE": 503,
     "FEEDBACK_NOT_FOUND": 404,
     "FEEDBACK_ALREADY_COMPLETED": 409,
+    "MENU_NOT_FOUND": 404,
+    "DUPLICATE_MENU": 409,
+    "STORE_PROFILE_CORRUPT": 500,
+    "STORE_PROFILE_UNAVAILABLE": 503,
 }
 
 
@@ -74,6 +101,57 @@ def api_status(payload):
     return 422
 
 
+def _dispatch_store(method, path, body, service, store_profile):
+    """매장 설정과 메뉴 선택형 세트 계산. Agent 도구 계약과 분리된 화면 전용 경로다."""
+    if (path, method) not in STORE_ROUTES:
+        if any(route_path == path for route_path, _ in STORE_ROUTES):
+            return error_result("METHOD_NOT_ALLOWED", "허용되지 않는 요청 방식입니다.")
+        return error_result("NOT_FOUND", f"지원하지 않는 API 경로입니다: {path}")
+    if store_profile is None:
+        return error_result(
+            "STORE_PROFILE_UNAVAILABLE", "매장 설정 서비스를 사용할 수 없습니다.", retryable=True
+        )
+    arguments = {} if method == "GET" else _decode_json(body)
+    if isinstance(arguments, dict) and arguments.get("status") == "error":
+        return arguments
+    try:
+        if path == STORE_PROFILE_ROUTE:
+            return store_profile.get_profile()
+        if path == STORE_MENUS_ROUTE:
+            return {"status": "ok", "menu": store_profile.add_menu(arguments)}
+        if path == STORE_MENU_COST_ROUTE:
+            return {"status": "ok", "menu": store_profile.update_menu_cost(arguments)}
+        if path == STORE_MENU_DELETE_ROUTE:
+            return {"status": "ok", **store_profile.delete_menu(arguments)}
+        if path == STORE_BUNDLE_OBSERVATION_ROUTE:
+            return store_profile.bundle_observation(arguments)
+        unknown = sorted(set(arguments) - BUNDLE_SIMULATE_FIELDS)
+        missing = sorted(BUNDLE_SIMULATE_FIELDS - set(arguments))
+        if unknown or missing:
+            return error_result(
+                "INVALID_ARGUMENTS",
+                "세트 계산 요청의 필드를 확인하세요.",
+                {"unknown_fields": unknown, "missing_fields": missing},
+            )
+        return service.simulate_bundle_strategy(**arguments)
+    except StoreProfileError as error:
+        return error_result(
+            error.code,
+            error.message,
+            error.details,
+            retryable=error.code == "STORE_PROFILE_UNAVAILABLE",
+        )
+    except DecisionServiceError as error:
+        return error_result(
+            error.code,
+            error.message,
+            error.details,
+            retryable=error.code in {"PANEL_NOT_FOUND", "INVALID_PANEL"},
+        )
+    except (TypeError, ValueError) as error:
+        return error_result("INVALID_ARGUMENTS", str(error))
+
+
 def dispatch_api(
     method,
     path,
@@ -82,9 +160,13 @@ def dispatch_api(
     forecast_service=None,
     feedback_store=None,
     agent_chat_service=None,
+    store_profile=None,
 ):
     """HTTP 입력을 도구 계약으로 전달하고 상태 코드와 JSON 객체를 반환한다."""
     method = method.upper()
+    if path.startswith("/api/store/"):
+        payload = _dispatch_store(method, path, body, service, store_profile)
+        return api_status(payload), payload
     if path == AGENT_CHAT_ROUTE:
         if method != "POST":
             payload = error_result("METHOD_NOT_ALLOWED", "POST 요청만 지원합니다.")
@@ -285,6 +367,7 @@ def _handler_class(
     forecast_service,
     feedback_store,
     agent_chat_service,
+    store_profile,
     static_dir,
 ):
     static_dir = Path(static_dir).resolve()
@@ -318,6 +401,7 @@ def _handler_class(
                 forecast_service,
                 feedback_store,
                 agent_chat_service,
+                store_profile,
             )
             self._send_json(status, payload)
 
@@ -377,9 +461,15 @@ def create_server(
     static_dir=None,
     feedback_store=None,
     agent_chat_service=None,
+    store_profile=None,
 ):
     root = Path(__file__).resolve().parents[1]
     service = service or MarginCastDecisionService()
+    if store_profile is None and isinstance(service, MarginCastDecisionService):
+        store_profile = StoreProfileService(service)
+    if store_profile is not None and isinstance(service, MarginCastDecisionService):
+        # 사용자가 수정한 식재료 원가를 웹 화면과 Agent가 같은 계산 경로에서 사용한다.
+        service.set_cost_overrides_provider(store_profile.user_cost_overrides)
     forecast_service = ForecastDecisionService(service)
     feedback_store = feedback_store or ExperimentFeedbackStore()
     agent_chat_service = agent_chat_service or AgentChatService(
@@ -405,6 +495,7 @@ def create_server(
             forecast_service,
             feedback_store,
             agent_chat_service,
+            store_profile,
             static_dir,
         ),
     )

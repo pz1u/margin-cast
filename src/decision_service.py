@@ -84,6 +84,19 @@ class MarginCastDecisionService:
         self._panel = None
         self._elasticity_cache = {}
         self._reference_cache = {}
+        self._cost_overrides_provider = None
+
+    def set_cost_overrides_provider(self, provider):
+        """사용자가 수정한 식재료 원가(menu_id -> 원)를 돌려주는 함수를 연결한다.
+
+        수요 모델과 가격탄력성은 이 값을 사용하지 않는다. 기여이익 계산의 원가만 바꾼다.
+        """
+        self._cost_overrides_provider = provider
+
+    def _user_unit_costs(self):
+        if self._cost_overrides_provider is None:
+            return {}
+        return {key: int(value) for key, value in self._cost_overrides_provider().items()}
 
     def _load_panel(self):
         if self._panel is None:
@@ -325,6 +338,15 @@ class MarginCastDecisionService:
                 horizon_days=horizon_days,
                 forecasts=forecasts,
             )
+        user_costs = self._user_unit_costs()
+        if menu_id in user_costs:
+            # 캐시된 기준 수요는 그대로 두고 원가 열만 바꾼 사본을 계산에 사용한다.
+            reference = reference.assign(unit_cost=float(user_costs[menu_id]))
+        cost_basis = {
+            "menu_id": menu_id,
+            "unit_cost": float(reference["unit_cost"].mean()),
+            "source": "USER" if menu_id in user_costs else "POS_HISTORY",
+        }
         normalized = [dict(value) for value in scenarios]
         reference_count = sum(
             value["list_price"] - value["discount"] == baseline_price
@@ -391,6 +413,7 @@ class MarginCastDecisionService:
                 ),
             },
             "data_provenance": self._data_provenance(),
+            "cost_basis": cost_basis,
             "model": {
                 "elasticity": self._elasticity_cache[menu_id]["elasticity"],
                 "elasticity_standard_error": self._elasticity_cache[menu_id]["robust_standard_error"],
@@ -440,6 +463,8 @@ class MarginCastDecisionService:
         horizon_days=DEFAULT_HORIZON_DAYS,
         simulations=DEFAULT_SIMULATIONS,
         seed=DEFAULT_SEED,
+        main_menu_id="M01",
+        component_menu_ids=("M06",),
     ):
         if isinstance(horizon_days, bool) or not isinstance(horizon_days, int) or horizon_days < 1:
             raise DecisionServiceError("INVALID_HORIZON", "horizon_days는 1 이상의 정수여야 합니다.")
@@ -454,8 +479,42 @@ class MarginCastDecisionService:
             )
         if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= 2**32 - 1:
             raise DecisionServiceError("INVALID_SEED", "seed는 0~2^32-1 범위의 정수여야 합니다.")
+        if not isinstance(main_menu_id, str) or not main_menu_id.strip():
+            raise DecisionServiceError("INVALID_BUNDLE_MENUS", "main_menu_id를 입력하세요.")
+        if (
+            not isinstance(component_menu_ids, (list, tuple))
+            or not 1 <= len(component_menu_ids) <= 4
+            or any(not isinstance(value, str) or not value.strip() for value in component_menu_ids)
+        ):
+            raise DecisionServiceError(
+                "INVALID_BUNDLE_MENUS",
+                "component_menu_ids는 1~4개의 메뉴 ID 배열이어야 합니다.",
+            )
         tables = load_observed_tables(self.data_dir)
-        evidence = build_bundle_evidence(tables)
+        user_costs = self._user_unit_costs()
+        try:
+            evidence = build_bundle_evidence(
+                tables,
+                main_menu_id=main_menu_id,
+                component_menu_ids=component_menu_ids,
+                unit_costs=user_costs,
+            )
+        except (KeyError, ValueError) as error:
+            raise DecisionServiceError("INVALID_BUNDLE_MENUS", str(error)) from error
+        history_costs = (
+            tables["menu_cost_history"]
+            .sort_values("effective_date")
+            .groupby("menu_id")["unit_cost"]
+            .last()
+        )
+        cost_basis = [
+            {
+                "menu_id": menu_id,
+                "unit_cost": float(user_costs.get(menu_id, history_costs[menu_id])),
+                "source": "USER" if menu_id in user_costs else "POS_HISTORY",
+            }
+            for menu_id in [main_menu_id, *component_menu_ids]
+        ]
         panel = self._load_panel().copy()
         panel["date"] = pd.to_datetime(panel["date"])
         bundle_start = tables["bundles"]["start_date"].min()
@@ -486,6 +545,11 @@ class MarginCastDecisionService:
                 "seed": seed,
             },
             "data_provenance": self._data_provenance(),
+            "bundle_menus": {
+                "main_menu_id": main_menu_id,
+                "component_menu_ids": list(component_menu_ids),
+            },
+            "cost_basis": cost_basis,
             "strategy": result,
             "decision": decision,
             "interpretation_notes": [
