@@ -62,6 +62,11 @@ Agent 감사 로그에는 두 ID의 연결 상태와 Decision, Policy 결과, �
 호출 Tool 이름, 가격 ToolResult의 SHA-256 참조만 저장한다. 전체 대화와 설명문, API 키,
 주소 및 정확한 좌표는 저장하지 않는다.
 
+감사 로그는 모든 정상 Runtime 결과의 `execution_id`를 저장한다. Policy가 거부한 실행에는
+`recommendation_id`가 없지만 모델, 호출 Tool, 위반 코드와 지연시간은 남는다. v1 파일 저장소는
+단일 프로세스·단일 worker에서 store 인스턴스를 하나씩 사용하며, 프로세스 내부 lock과 atomic
+replace로 저장한다. 다중 프로세스 공유는 지원하지 않는다.
+
 ## 웹과 HTTP API
 
 가격·할인 계산 뒤 `실험 피드백` 탭에서 예측 스냅샷과 기간을 계획으로 저장한다. 실험이

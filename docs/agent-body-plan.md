@@ -453,6 +453,10 @@ A단계를 확장 설계 단계로 사용하지 않는다. Mock Runtime 한 건�
 | F | Feedback·Audit | 추천 ID, 구조화된 판단, 실험 계획과 실제 결과 연결 상태 보존 — 완료 |
 | G | Web | UI가 설명문이 아니라 `AgentResponse.facts`로 핵심 수치와 Decision 표시 |
 
+G.0 실행성 점검에서 모든 Runtime 실행에 `execution_id`를 추가했다. PASS 추천만
+`recommendation_id`를 가지며, REJECTED 실행은 `execution_id`로 Policy 위반과 지연시간을 추적한다.
+Web 경계는 `COMPLETED`, `NEEDS_INPUT`, `REJECTED`, `ERROR` 네 상태를 사용한다.
+
 첫 세로 흐름은 `가격 질문 → Mock LLM → 가격 도구 → Response Policy → AgentResponse` 하나로
 제한한다. 이 흐름이 통과한 뒤 할인·날씨·세트·피드백을 같은 계약에 연결한다.
 

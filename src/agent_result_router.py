@@ -29,11 +29,12 @@ class ResponsePolicy(Protocol):
 
 
 class AuditRecorder(Protocol):
-    def record_recommendation(
+    def record_execution(
         self,
         run_result: AgentRunResult,
-        agent_response: AgentResponse,
+        agent_response: AgentResponse | None,
         policy_validation: JsonObject,
+        timings_ms: JsonObject,
     ) -> JsonObject:
         ...
 
@@ -108,11 +109,33 @@ class AgentResultRouter:
 
     def _timings(self, run_result, response_policy_ms):
         values = run_result.timing.as_dict()
+        values["execution_id"] = run_result.execution_id
         values["response_policy_ms"] = response_policy_ms
         values["total_ms"] = run_result.timing.runtime_total_ms + response_policy_ms
         values["model_identifier"] = run_result.model_identifier
         LOGGER.info("agent_timing %s", json.dumps(values, sort_keys=True))
         return values
+
+    def _finalize(
+        self,
+        run_result: AgentRunResult,
+        outcome: AgentResultRoutingOutcome,
+        response_policy_ms: float = 0.0,
+    ) -> AgentResultRoutingOutcome:
+        timings = self._timings(run_result, response_policy_ms)
+        finalized = AgentResultRoutingOutcome(
+            agent_response=outcome.agent_response,
+            policy_validation=outcome.policy_validation,
+            timings_ms=timings,
+        )
+        if self.audit_recorder is not None:
+            self.audit_recorder.record_execution(
+                run_result,
+                finalized.agent_response,
+                finalized.policy_validation,
+                finalized.timings_ms,
+            )
+        return finalized
 
     def route(self, run_result: AgentRunResult) -> AgentResultRoutingOutcome:
         if not isinstance(run_result, AgentRunResult):
@@ -123,30 +146,26 @@ class AgentResultRouter:
             policy_started = self.clock()
             policy_outcome = self.response_policy.evaluate(run_result)
             response_policy_ms = (self.clock() - policy_started) * 1000
-            timings = self._timings(run_result, response_policy_ms)
-            if (
-                self.audit_recorder is not None
-                and policy_outcome.agent_response is not None
-            ):
-                self.audit_recorder.record_recommendation(
-                    run_result,
-                    policy_outcome.agent_response,
-                    policy_outcome.policy_validation,
-                )
-            return AgentResultRoutingOutcome(
-                agent_response=policy_outcome.agent_response,
-                policy_validation=policy_outcome.policy_validation,
-                timings_ms=timings,
+            return self._finalize(
+                run_result,
+                AgentResultRoutingOutcome(
+                    agent_response=policy_outcome.agent_response,
+                    policy_validation=policy_outcome.policy_validation,
+                ),
+                response_policy_ms,
             )
 
         error = raw.get("error")
         if not isinstance(error, dict):
-            return self._agent_error(
-                AgentErrorCategory.ENGINE_ERROR,
-                "도구 오류 응답 형식을 확인할 수 없습니다.",
-                original_code=None,
-                details={},
-                retryable=False,
+            return self._finalize(
+                run_result,
+                self._agent_error(
+                    AgentErrorCategory.ENGINE_ERROR,
+                    "도구 오류 응답 형식을 확인할 수 없습니다.",
+                    original_code=None,
+                    details={},
+                    retryable=False,
+                ),
             )
 
         original_code = error.get("code")
@@ -163,11 +182,14 @@ class AgentResultRouter:
             retryable = False
 
         if original_code == "MISSING_INPUT":
-            return self._missing_input_or_error(
+            return self._finalize(
                 run_result,
-                message=message,
-                details=details,
-                retryable=retryable,
+                self._missing_input_or_error(
+                    run_result,
+                    message=message,
+                    details=details,
+                    retryable=retryable,
+                ),
             )
 
         category = _error_category(original_code or "ENGINE_ERROR")
@@ -176,12 +198,15 @@ class AgentResultRouter:
         ):
             message = "같은 가격·할인 조건이 중복되어 있습니다. 중복된 대안 중 하나를 제거해주세요."
 
-        return self._agent_error(
-            category,
-            message,
-            original_code=original_code,
-            details=details,
-            retryable=retryable,
+        return self._finalize(
+            run_result,
+            self._agent_error(
+                category,
+                message,
+                original_code=original_code,
+                details=details,
+                retryable=retryable,
+            ),
         )
 
     def _missing_input_or_error(

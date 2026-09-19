@@ -7,6 +7,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 import json
 from time import perf_counter
+from uuid import uuid4
 
 from jsonschema import Draft202012Validator
 
@@ -32,6 +33,8 @@ ToolExecutor = Callable[[str, JsonObject], JsonObject]
 
 class AgentRuntimeError(RuntimeError):
     """B단계 단일 호출 계약을 만족하지 않는 Provider 응답."""
+
+    execution_id: str | None = None
 
 
 class ProviderInvalidToolCallError(AgentRuntimeError):
@@ -82,6 +85,7 @@ class AgentRunTiming:
 class AgentRunResult:
     """Response Policy 적용 전까지 관찰할 수 있는 단일 실행 결과."""
 
+    execution_id: str
     agent_input: AgentInput
     tool_call: ToolCall
     tool_result: ToolResult
@@ -102,11 +106,13 @@ class AgentRuntime:
         tools: Sequence[JsonObject] = TOOL_SCHEMAS,
         tool_executor: ToolExecutor = execute_tool,
         clock=perf_counter,
+        execution_id_factory: Callable[[], str] | None = None,
     ) -> None:
         self.provider = provider
         self.tools = tuple(deepcopy(tool) for tool in tools)
         self.tool_executor = tool_executor
         self.clock = clock
+        self.execution_id_factory = execution_id_factory or (lambda: uuid4().hex)
 
     @staticmethod
     def _missing_input_question(fields: tuple[str, ...]) -> str:
@@ -196,6 +202,25 @@ class AgentRuntime:
         if not isinstance(timing_label, str) or not timing_label.strip():
             raise ValueError("timing_label은 비어 있지 않은 문자열이어야 합니다.")
 
+        execution_id = self.execution_id_factory()
+        if not isinstance(execution_id, str) or not execution_id.strip():
+            raise ValueError("execution_id는 비어 있지 않은 문자열이어야 합니다.")
+        execution_id = execution_id.strip()
+
+        try:
+            return self._run(agent_input, timing_label.strip(), execution_id)
+        except Exception as error:
+            # Web 경계가 Tool 실행 전 오류도 같은 실행 단위로 추적할 수 있게 한다.
+            error.execution_id = execution_id
+            raise
+
+    def _run(
+        self,
+        agent_input: AgentInput,
+        timing_label: str,
+        execution_id: str,
+    ) -> AgentRunResult:
+
         run_started = self.clock()
         model_identifier = getattr(
             self.provider,
@@ -247,13 +272,14 @@ class AgentRuntime:
         if tool_result.raw["status"] == "error":
             runtime_total_ms = (self.clock() - run_started) * 1000
             return AgentRunResult(
+                execution_id=execution_id,
                 agent_input=agent_input,
                 tool_call=tool_call,
                 tool_result=tool_result,
                 final_response=None,
                 messages=tuple(messages),
                 timing=AgentRunTiming(
-                    label=timing_label.strip(),
+                    label=timing_label,
                     first_provider_ms=first_provider_ms,
                     tool_execution_ms=tool_execution_ms,
                     second_provider_ms=None,
@@ -275,13 +301,14 @@ class AgentRuntime:
 
         runtime_total_ms = (self.clock() - run_started) * 1000
         return AgentRunResult(
+            execution_id=execution_id,
             agent_input=agent_input,
             tool_call=tool_call,
             tool_result=tool_result,
             final_response=final_response,
             messages=tuple(messages),
             timing=AgentRunTiming(
-                label=timing_label.strip(),
+                label=timing_label,
                 first_provider_ms=first_provider_ms,
                 tool_execution_ms=tool_execution_ms,
                 second_provider_ms=second_provider_ms,

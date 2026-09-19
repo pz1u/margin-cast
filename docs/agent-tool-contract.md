@@ -205,6 +205,24 @@ F단계 timing 로그는 `first_provider_ms`, `tool_execution_ms`, `second_provi
 현재 측정에서는 전체 시간이 비슷하고 두 Provider 구간 사이의 편차가 컸다. F단계에서는 모델이나
 생성 설정을 변경하지 않고 관측 결과만 남긴다.
 
+### G.0 로컬 모델 실행성 비교
+
+16 logical CPU, 사용 가능 메모리 약 32.9GB, C 드라이브 여유 약 309GB인 로컬 환경에서 같은
+가격 질문을 비교했다. NVIDIA GPU는 감지되지 않았다. 설치돼 있던 `llama3.2:latest`를 먼저
+사용했고, 추가 다운로드는 `qwen3:1.7b` 하나로 제한했다.
+
+| 모델·상태 | Tool 선택 | 인자 | ToolResult | Policy | 첫 Provider | Tool | 두 번째 Provider | 전체 |
+|---|---|---|---|---|---:|---:|---:|---:|
+| `qwen3:4b` warm 기준 | 성공 | 정확 | 성공 | PASS | 120,924ms | 494ms | 8,057ms | 129,475ms |
+| `llama3.2:latest` warm | 성공 | 실패 | 미실행 | 미실행 | 6,193ms | - | - | - |
+| `qwen3:1.7b` cold | 성공 | 정확 | 성공 | REJECTED | 17,707ms | 476ms | 20,242ms | 38,426ms |
+| `qwen3:1.7b` warm | 성공 | 정확 | 성공 | PASS | 4,646ms | 447ms | 6,025ms | 11,119ms |
+
+`llama3.2:latest`는 계약에 없는 `description`과 `horizon_days=null`을 추가해 제외한다.
+`qwen3:1.7b`는 warm 지연시간이 가장 짧고 Tool 인자도 정확해 G단계 로컬 개발 후보로 권장한다.
+다만 cold 실행에서 숫자 설명이 Policy에 거부됐으므로 `qwen3:4b` 설정을 제거하지 않고 fallback으로
+유지한다. G.0에서는 환경변수 기본값이나 모델 설정을 변경하지 않는다.
+
 실제 로컬 서버 테스트는 기본 회귀 테스트에서 제외한다. Ollama 서버와 Tool Calling 지원 모델을
 준비한 뒤 다음처럼 명시적으로 실행한다.
 
@@ -228,6 +246,32 @@ Feedback Tool Registry에는 다음 네 도구를 등록한다.
 Agent Feedback Workflow는 사용자 실행 확인을 boolean으로 받은 뒤에만 계획 Tool을 호출한다.
 계획의 예측 분포와 Decision 문맥은 가격 ToolResult에서 복사하며, 실제 결과는 USER provenance가
 있는 값만 전달한다. 기간이나 실제값이 부족하면 Tool을 호출하지 않고 `MissingInput`을 반환한다.
+
+### 실행 추적과 Web 상태
+
+Runtime은 Provider 호출 전에 `execution_id`를 만들고 모든 `AgentRunResult`에 보존한다. PASS일 때만
+별도 `recommendation_id`가 생성된다. REJECTED 실행도 `execution_id`로 모델, 호출 Tool, Policy
+상태와 위반 코드, 구간별 시간을 감사 로그에서 찾을 수 있다. Tool 실행 전 예외에도
+`execution_id`를 연결해 Web 경계에서 추적할 수 있게 한다.
+
+Web/API 경계의 상태는 다음 네 값으로 제한한다.
+
+| 상태 | 의미 |
+|---|---|
+| `COMPLETED` | Policy PASS이며 사용자에게 표시할 AgentResponse가 있음 |
+| `NEEDS_INPUT` | 사용자 입력이 더 필요하며 정상 대화로 계속 진행 가능 |
+| `REJECTED` | Tool은 성공했지만 Response Policy가 LLM 표현을 거부함 |
+| `ERROR` | Provider, Runtime 또는 Tool 오류로 정상 응답을 만들 수 없음 |
+
+Tool 실행 전 `AgentMissingInputError`는 Web에서 `ERROR`가 아니라 `NEEDS_INPUT`으로 매핑한다.
+이 계약은 상태 객체만 정의하며 HTTP endpoint나 상태 코드는 G단계에서 결정한다.
+
+### 파일 저장소 동시성
+
+해커톤 v1은 단일 프로세스·단일 worker에서 Audit Store와 Feedback Store를 각각 singleton으로
+사용한다. 두 저장소는 인스턴스 내부 `RLock`으로 read-modify-write를 보호하고, 임시 파일을
+flush·fsync한 뒤 `os.replace`하는 atomic write를 사용한다. 여러 프로세스나 여러 store 인스턴스가
+같은 파일을 동시에 쓰는 구성은 지원하지 않으며, 그 단계에서는 DB로 전환한다.
 
 Decision Engine의 데이터 출처, 근거 품질 산식과 검증 계획은
 [Decision Engine 데이터 출처와 판단 방법](decision-methodology.md)을 기준으로 한다.

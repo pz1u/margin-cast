@@ -30,7 +30,7 @@ def tool_result_reference(raw: JsonObject) -> str:
 
 
 class AgentAuditStore:
-    """추천 상태만 저장하며 프롬프트·설명·민감 Tool 인자는 저장하지 않는다."""
+    """실행 상태만 저장하며 프롬프트·설명·민감 Tool 인자는 저장하지 않는다."""
 
     def __init__(self, path=None) -> None:
         root = Path(__file__).resolve().parents[1]
@@ -77,19 +77,48 @@ class AgentAuditStore:
                 except OSError:
                     pass
 
-    def record_recommendation(
+    @staticmethod
+    def _timing_snapshot(timings_ms: JsonObject) -> JsonObject:
+        allowed = (
+            "timing_label",
+            "first_provider_ms",
+            "tool_execution_ms",
+            "second_provider_ms",
+            "runtime_total_ms",
+            "response_policy_ms",
+            "total_ms",
+        )
+        return {
+            name: deepcopy(timings_ms[name])
+            for name in allowed
+            if name in timings_ms
+        }
+
+    def record_execution(
         self,
         run_result: AgentRunResult,
-        agent_response: AgentResponse,
+        agent_response: AgentResponse | None,
         policy_validation: JsonObject,
+        timings_ms: JsonObject,
     ) -> JsonObject:
-        if agent_response.status is not AgentResponseStatus.COMPLETED:
-            raise AgentAuditError("완료된 추천만 감사 로그에 기록할 수 있습니다.")
-        recommendation_id = agent_response.recommendation_id
-        if not recommendation_id:
-            raise AgentAuditError("recommendation_id가 필요합니다.")
-        selected = agent_response.facts.get("selected_scenario_id", {}).get("value")
+        recommendation_id = None
+        recommended = run_result.tool_result.raw.get("recommended_action")
+        selected = (
+            recommended.get("scenario_id") if isinstance(recommended, dict) else None
+        )
+        if agent_response is not None:
+            if agent_response.status is AgentResponseStatus.COMPLETED:
+                recommendation_id = agent_response.recommendation_id
+                if not recommendation_id:
+                    raise AgentAuditError("완료된 추천에는 recommendation_id가 필요합니다.")
+                selected = agent_response.facts.get("selected_scenario_id", {}).get(
+                    "value"
+                )
+            elif agent_response.recommendation_id is not None:
+                raise AgentAuditError("완료되지 않은 응답에는 recommendation_id를 기록할 수 없습니다.")
+
         record = {
+            "execution_id": run_result.execution_id,
             "recommendation_id": recommendation_id,
             "prompt_version": run_result.prompt_version,
             "model_identifier": run_result.model_identifier,
@@ -100,16 +129,17 @@ class AgentAuditStore:
             "response_policy_status": policy_validation.get("status"),
             "violation_codes": list(policy_validation.get("violations", [])),
             "feedback_id": None,
-            "feedback_status": "not_planned",
+            "feedback_status": "not_planned" if recommendation_id else None,
             "tool_result_ref": tool_result_reference(run_result.tool_result.raw),
+            "timings_ms": self._timing_snapshot(timings_ms),
         }
         with self._lock:
             records = self._read()
             if any(
-                item.get("recommendation_id") == recommendation_id
+                item.get("execution_id") == run_result.execution_id
                 for item in records
             ):
-                raise AgentAuditError("이미 기록된 recommendation_id입니다.")
+                raise AgentAuditError("이미 기록된 execution_id입니다.")
             records.append(record)
             self._write(records)
         return deepcopy(record)
@@ -166,6 +196,18 @@ class AgentAuditStore:
                     row
                     for row in self._read()
                     if row.get("recommendation_id") == recommendation_id
+                ),
+                None,
+            )
+        return None if record is None else deepcopy(record)
+
+    def get_execution(self, execution_id: str) -> JsonObject | None:
+        with self._lock:
+            record = next(
+                (
+                    row
+                    for row in self._read()
+                    if row.get("execution_id") == execution_id
                 ),
                 None,
             )

@@ -235,6 +235,7 @@ class AgentFeedbackWorkflowTests(unittest.TestCase):
         self.assertEqual(
             set(audit),
             {
+                "execution_id",
                 "recommendation_id",
                 "prompt_version",
                 "model_identifier",
@@ -247,6 +248,7 @@ class AgentFeedbackWorkflowTests(unittest.TestCase):
                 "feedback_id",
                 "feedback_status",
                 "tool_result_ref",
+                "timings_ms",
             },
         )
         for forbidden in (

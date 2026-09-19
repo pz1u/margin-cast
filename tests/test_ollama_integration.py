@@ -80,6 +80,7 @@ class OllamaIntegrationTests(unittest.TestCase):
                 + json.dumps(
                     {
                         "model": os.environ["OLLAMA_MODEL"],
+                        "execution_id": run_result.execution_id,
                         "user_input": agent_input.text,
                         "tool_name": run_result.tool_call.name,
                         "tool_arguments": run_result.tool_call.arguments,

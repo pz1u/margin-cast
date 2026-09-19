@@ -82,6 +82,7 @@ class AgentRuntimeTests(unittest.TestCase):
             MockLLMProvider(),
             tool_executor=RecordingToolExecutor(raw_result),
             clock=SequenceClock(0, 1, 3, 4, 7, 8, 13, 15),
+            execution_id_factory=lambda: "execution-timing",
         )
         run_result = runtime.run(price_question(), timing_label="cold")
         router = AgentResultRouter(
@@ -96,6 +97,7 @@ class AgentRuntimeTests(unittest.TestCase):
             outcome.timings_ms,
             {
                 "timing_label": "cold",
+                "execution_id": "execution-timing",
                 "first_provider_ms": 2000,
                 "tool_execution_ms": 3000,
                 "second_provider_ms": 5000,
@@ -106,6 +108,22 @@ class AgentRuntimeTests(unittest.TestCase):
             },
         )
         self.assertIn('"timing_label": "cold"', logs.output[0])
+
+    def test_every_runtime_result_has_execution_id(self):
+        runtime = AgentRuntime(
+            MockLLMProvider(),
+            tool_executor=RecordingToolExecutor(
+                {
+                    "status": "ok",
+                    "recommended_action": {"action": "EXPERIMENT"},
+                }
+            ),
+            execution_id_factory=lambda: "execution-test",
+        )
+
+        result = runtime.run(price_question())
+
+        self.assertEqual(result.execution_id, "execution-test")
 
     def test_price_question_runs_one_tool_call_and_preserves_raw_result(self):
         raw_result = {
