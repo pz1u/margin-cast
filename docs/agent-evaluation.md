@@ -5,9 +5,11 @@ Agent 본체 구현 뒤 다음 사례를 회귀 테스트한다. 숫자의 정�
 
 ## 현재 자동화 상태
 
-이 문서의 사례는 Agent 본체용 인수 조건이다. 현재 가격 질문 한 건의 Mock Runtime과 최소
-Response Policy가 자동화됐다. ENGINE facts 고정, scenario ID 연결, Decision 일치, 합성 데이터와
-미보정 근거 고지까지 검사하며 날씨·세트·오류 대화의 최종 자연어 정책은 아직 없다.
+이 문서의 사례는 Agent 본체용 인수 조건이다. 현재 가격 질문 한 건의 Mock Runtime, 최소
+Response Policy, ToolResult 오류 분기가 자동화됐다. ENGINE facts 고정, scenario ID 연결, Decision
+일치, provenance별 합성 데이터 경고, 미보정 근거 고지를 검사한다. Missing Input·Invalid Input·
+Unsupported·Insufficient Data·Engine Error는 구조화된 흐름까지 자동화됐고 최종 LLM 자연어 정책은
+아직 없다.
 
 특히 `WEATHER-01`의 최종 자연어 표현 검사는 Agent 본체 구현과 함께 추가한다. 그 전에는
 `menu_specific_causal_effect_validated=false` 계약의 자동 테스트가 하위 방어선이고, 이 문서는

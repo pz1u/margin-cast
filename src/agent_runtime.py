@@ -36,7 +36,7 @@ class AgentRunResult:
     agent_input: AgentInput
     tool_call: ToolCall
     tool_result: ToolResult
-    final_response: LLMResponse
+    final_response: LLMResponse | None
     messages: tuple[Message, ...]
 
 
@@ -119,6 +119,15 @@ class AgentRuntime:
                 tool_name=tool_call.name,
             )
         )
+
+        if tool_result.raw["status"] == "error":
+            return AgentRunResult(
+                agent_input=agent_input,
+                tool_call=tool_call,
+                tool_result=tool_result,
+                final_response=None,
+                messages=tuple(messages),
+            )
 
         final_response = self.provider.generate(tuple(messages), self.tools)
         if not isinstance(final_response, LLMResponse):

@@ -366,17 +366,29 @@ Response Policy가 해당 응답을 거부해야 한다.
 
 ## 13. 오류 처리
 
-| 오류 | Agent 응답 |
-|---|---|
-| `UNSUPPORTED_MENU` | 필요한 가격 수준과 데이터 수집 경로 안내 |
-| `INVALID_SCENARIO` | 잘못된 가격·할인 필드를 짚고 다시 질문 |
-| `INSUFFICIENT_FORECAST` | 실제 예보 가능 기간으로 줄이도록 안내 |
-| `PANEL_NOT_FOUND` | 분석 데이터 준비가 필요하다고 안내 |
-| `INVALID_PANEL` | 필요한 컬럼과 데이터 형식을 안내 |
-| `FEEDBACK_NOT_FOUND` | 대기 중인 실험 계획을 다시 조회 |
-| `FEEDBACK_ALREADY_COMPLETED` | 기존 완료 기록을 보여주고 중복 저장하지 않음 |
+ToolResult를 받은 직후 `status`를 확인한다. 성공 결과만 Response Policy에 전달하고, 오류 결과는
+`MissingInput` 또는 `AgentError`로 변환한다. 원본 오류 코드와 `details`는 보존한다.
 
-도구 오류를 받은 뒤 임의의 숫자로 답변을 완성하지 않는다.
+| Tool 오류 | Agent 분류 | Agent 응답 |
+|---|---|---|
+| `MISSING_INPUT` | `MissingInput` | `execution_defaults`로 채울 수 없는 사업 입력만 질문 |
+| `INVALID_ARGUMENTS`, `INVALID_SCENARIO` | `INVALID_INPUT` | 잘못된 입력의 수정 경로 안내 |
+| `UNSUPPORTED_MENU`, `UNKNOWN_TOOL` | `UNSUPPORTED` | 도구가 반환한 데이터 상태와 `next_step` 안내 |
+| `INSUFFICIENT_DATA`, `INSUFFICIENT_FORECAST` | `INSUFFICIENT_DATA` | 데이터 부족 이유와 `next_step` 안내 |
+| `PANEL_NOT_FOUND`, `INVALID_PANEL` | `ENGINE_ERROR` | 분석 데이터 준비 또는 형식 오류 안내 |
+| `FEEDBACK_NOT_FOUND` | 별도 피드백 흐름 | 대기 중인 실험 계획을 다시 조회 |
+| `FEEDBACK_ALREADY_COMPLETED` | 별도 피드백 흐름 | 기존 완료 기록을 보여주고 중복 저장하지 않음 |
+
+`UNSUPPORTED_MENU`는 이유가 가격 변화 부족이어도 현재 도구 계약의 지원 경계 오류이므로
+`UNSUPPORTED`로 매핑한다. `PANEL_NOT_FOUND`와 `INVALID_PANEL`은 분석 자산의 준비·형식 문제이므로
+통계적 데이터 부족과 구분해 `ENGINE_ERROR`로 매핑한다. 중복 가격·할인 대안은 Agent가 제거하지
+않고 `INVALID_INPUT`으로 반환한다. 오류 응답에는 계산 facts와 Decision을 생성하지 않는다.
+
+C/D 단계의 아라비아 숫자 탐지는 Mock 설명이 ENGINE 밖의 숫자를 만들지 못하게 하는 임시
+방어선이다. 실제 LLM Provider 연결 단계에서는 구조화된 설명 계약 또는 deterministic renderer로
+대체하거나 보강한다. 현재 병렬로 유지하는 fact의 `source_ref`와 `fact_provenance.ref`는 Response
+Policy가 일치 여부를 검사한다. 두 표현의 통합은 실제 Provider 연결 전 리팩터링 후보이며 D단계에서
+구조를 변경하지 않는다.
 
 ## 14. 시스템 프롬프트 구성
 
@@ -407,11 +419,13 @@ src/
 ├── agent_runtime.py       # B단계 단일 Tool Call 실행
 ├── mock_llm_provider.py   # B단계 두 응답 Mock
 ├── response_policy.py     # C단계 ENGINE facts와 Decision 검증
+├── agent_result_router.py # D단계 성공·부족 입력·오류 분기
 └── agent_tool_contracts.py # TOOL_SCHEMAS와 execute_tool
 
 tests/
 ├── test_agent_runtime.py
-└── test_response_policy.py
+├── test_response_policy.py
+└── test_agent_error_flow.py
 ```
 
 B단계는 위 파일만으로 가격 Tool Call 한 번과 후속 Provider 응답까지 실행한다. 대화 상태,

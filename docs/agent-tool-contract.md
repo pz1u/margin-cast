@@ -71,7 +71,9 @@ capabilities 응답은 도구별 실행 기본값을 반환한다.
 `scenario_id`는 ENGINE이 메뉴·정가·할인 입력으로 결정하며 표시 이름이나 배열 순서가 바뀌어도
 같은 사업 조건에는 같은 ID를 사용한다.
 
-모든 계산 결과는 `data_provenance`로 합성/실제 데이터 여부와 데이터 버전을 밝힌다. 현재는
+모든 계산 결과는 `data_provenance`로 합성/실제 데이터 여부와 데이터 버전을 밝힌다. provenance는
+항상 ENGINE fact로 추적한다. `label=SYNTHETIC_DATA_PROTOTYPE`일 때만 synthetic warning을
+필수로 검사하며 실제 데이터 provenance에는 해당 경고를 요구하지 않는다. 현재는
 `SYNTHETIC_DATA_PROTOTYPE`이며 실제 매장 성과를 보증하지 않는다. `evidence_quality`는
 `heuristic-v1`이고 실제 매장 결과와의 관계가 아직 검증되지 않은 상태다. `version`과 함께
 `formula_fingerprint`를 보존해 당시 가중치·임계값을 재현한다.
@@ -110,9 +112,9 @@ Agent용 도구는 `location` 객체로 다음 세 위치 입력 형식 중 정�
 - 호출 디스패처: `src.agent_tool_contracts.execute_tool`
 - 계산 서비스: `src.decision_service.MarginCastDecisionService`
 
-에이전트 런타임에서 함수 호출을 받으면 `execute_tool(tool_name, arguments)`에 전달하고,
-반환된 객체를 JSON 도구 응답으로 다시 넣으면 된다. 실제 도구 등록과 호출 루프는 아직
-구현하지 않았다.
+에이전트 런타임에서 함수 호출을 받으면 `execute_tool(tool_name, arguments)`에 전달한다. 현재
+Mock Runtime은 성공 결과만 Provider의 후속 설명과 Response Policy에 전달한다. 오류 결과는 즉시
+`AgentResultRouter`로 보내 부족 입력 또는 공통 Agent 오류로 변환한다.
 
 ## 로컬 사전 검증
 
@@ -157,6 +159,10 @@ Agent용 도구는 `location` 객체로 다음 세 위치 입력 형식 중 정�
 10. `menu_specific_causal_effect_validated=false`이면 특정 날씨가 판매량 증가·감소를 일으킨다고 단정하지 않는다.
 11. 미지원 메뉴에는 오류 세부정보의 `next_step`을 사용해 데이터 확보 경로를 안내한다.
 
+현재 설명문 안의 아라비아 숫자 탐지는 C/D단계 Mock 방어선이다. 실제 Provider 연결 시에는
+구조화된 설명 계약 또는 deterministic renderer로 대체하거나 보강한다. facts의 `source_ref`와
+`fact_provenance.ref`는 현재 둘 다 유지하며 Response Policy가 일치 여부를 검사한다.
+
 Decision Engine의 데이터 출처, 근거 품질 산식과 검증 계획은
 [Decision Engine 데이터 출처와 판단 방법](decision-methodology.md)을 기준으로 한다.
 
@@ -168,8 +174,8 @@ Decision Engine의 데이터 출처, 근거 품질 산식과 검증 계획은
 4. 함수 호출을 `execute_tool`로 전달
 5. 도구 결과를 사용자가 이해할 수 있는 경영 언어로 설명
 
-A단계 Tool Contract, B단계 Mock 세로 흐름, C단계 가격 Response Policy까지 완료됐다. 다음
-단계에서는 Missing Input과 도구 오류를 다루며 기존 가격 정상 흐름의 책임을 확대하지 않는다.
+A단계 Tool Contract, B단계 Mock 세로 흐름, C단계 가격 Response Policy, D단계 Missing Input과
+도구 오류 분기까지 완료됐다. 실제 LLM Provider와 복구·재시도 정책은 아직 연결하지 않는다.
 
 Agent 본체의 필수 회귀 사례는 [MarginCast Agent MVP 평가 시나리오](agent-evaluation.md)에
 정리했다.

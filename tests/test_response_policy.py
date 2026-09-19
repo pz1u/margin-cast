@@ -80,6 +80,7 @@ class PriceResponsePolicyTests(unittest.TestCase):
             "downside_risk": selected["downside_risk"],
             "evidence_quality": selected["evidence_quality"],
             "engine_decision": raw["recommended_action"]["action"],
+            "data_provenance": raw["data_provenance"],
         }
         self.assertEqual(set(response.facts), set(expected_values))
         for name, expected in expected_values.items():
@@ -87,7 +88,11 @@ class PriceResponsePolicyTests(unittest.TestCase):
                 self.assertEqual(response.facts[name]["value"], expected)
                 self.assertEqual(response.facts[name]["source"], "ENGINE")
                 self.assertTrue(response.facts[name]["source_ref"])
-                if name not in {"selected_scenario_id", "engine_decision"}:
+                if name not in {
+                    "selected_scenario_id",
+                    "engine_decision",
+                    "data_provenance",
+                }:
                     self.assertIn(
                         f"scenario_id={selected_id}",
                         response.facts[name]["source_ref"],
@@ -165,6 +170,37 @@ class PriceResponsePolicyTests(unittest.TestCase):
             outcome.policy_validation["violations"],
         )
         self.assertIsNone(outcome.agent_response)
+
+    def test_non_synthetic_provenance_does_not_require_synthetic_warning(self):
+        run_result = self.run_agent()
+        raw = deepcopy(run_result.tool_result.raw)
+        raw["data_provenance"] = {
+            "source_type": "actual_pos",
+            "dataset_version": "store-pos-v1",
+            "uses_actual_store_data": True,
+            "label": "ACTUAL_STORE_DATA",
+        }
+        engine_action = DecisionAction(raw["recommended_action"]["action"])
+        changed = replace(
+            self.replace_raw(run_result, raw),
+            final_response=LLMResponse(
+                text="근거 품질은 아직 미보정 상태입니다.",
+                decision_claim=engine_action,
+            ),
+        )
+
+        outcome = self.policy.evaluate(changed)
+
+        self.assertEqual(outcome.policy_validation["status"], "PASS")
+        self.assertIsNotNone(outcome.agent_response)
+        self.assertEqual(
+            outcome.agent_response.facts["data_provenance"]["value"],
+            raw["data_provenance"],
+        )
+        self.assertNotIn(
+            "SYNTHETIC_DATA_WARNING_MISSING",
+            outcome.policy_validation["violations"],
+        )
 
     def test_missing_uncalibrated_evidence_notice_is_rejected(self):
         run_result = self.run_agent()

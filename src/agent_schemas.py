@@ -256,6 +256,8 @@ class AgentError:
     message: str
     origin: AgentErrorOrigin
     retryable: bool = False
+    original_code: str | None = None
+    details: JsonObject = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.code, AgentErrorCategory):
@@ -265,6 +267,9 @@ class AgentError:
         _require_text(self.message, "message")
         if not isinstance(self.retryable, bool):
             raise TypeError("retryable은 bool이어야 합니다.")
+        if self.original_code is not None:
+            _require_text(self.original_code, "original_code")
+        object.__setattr__(self, "details", _copy_object(self.details))
 
 
 @dataclass(frozen=True)
@@ -274,6 +279,7 @@ class MissingInput:
     fields: tuple[str, ...]
     reason: str
     question: str
+    source_requirement: tuple[ValueSource, ...] = (ValueSource.USER,)
     strategy_ref: str | None = None
 
     def __post_init__(self) -> None:
@@ -284,7 +290,13 @@ class MissingInput:
             raise ValueError("fields에는 누락된 입력 이름이 하나 이상 필요합니다.")
         _require_text(self.reason, "reason")
         _require_text(self.question, "question")
+        source_requirement = tuple(self.source_requirement)
+        if not source_requirement or any(
+            not isinstance(source, ValueSource) for source in source_requirement
+        ):
+            raise ValueError("source_requirement에는 허용된 값 출처가 필요합니다.")
         object.__setattr__(self, "fields", tuple(self.fields))
+        object.__setattr__(self, "source_requirement", source_requirement)
 
 
 @dataclass(frozen=True)

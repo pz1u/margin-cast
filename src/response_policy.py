@@ -67,7 +67,8 @@ class PriceResponsePolicy:
         violations = []
         raw = run_result.tool_result.raw
         call_id = run_result.tool_result.call_id
-        claim = run_result.final_response.decision_claim
+        final_response = run_result.final_response
+        claim = final_response.decision_claim if final_response is not None else None
         claim_value = claim.value if claim is not None else None
 
         if run_result.tool_result.tool_name != "compare_price_strategies":
@@ -130,6 +131,15 @@ class PriceResponsePolicy:
         facts = {}
         provenance = {}
         notices = []
+        data_provenance = raw.get("data_provenance")
+        if not isinstance(data_provenance, dict) or not data_provenance:
+            data_provenance = None
+            violations.append("DATA_PROVENANCE_MISSING")
+        else:
+            label = data_provenance.get("label")
+            if not isinstance(label, str) or not label.strip():
+                violations.append("DATA_PROVENANCE_LABEL_MISSING")
+
         if selected is not None and selected_id is not None and engine_decision is not None:
             selected_path = f"strategies[scenario_id={selected_id}]"
             try:
@@ -177,6 +187,11 @@ class PriceResponsePolicy:
                         "recommended_action.action",
                     ),
                 }
+                if data_provenance is not None:
+                    fact_values["data_provenance"] = (
+                        data_provenance,
+                        "data_provenance",
+                    )
             except (KeyError, TypeError):
                 violations.append("SELECTED_SCENARIO_FACTS_INVALID")
             else:
@@ -209,18 +224,21 @@ class PriceResponsePolicy:
                 elif not isinstance(calibrated, bool):
                     violations.append("EVIDENCE_CALIBRATION_STATUS_INVALID")
 
-        data_provenance = raw.get("data_provenance")
-        warning = (
-            data_provenance.get("warning")
-            if isinstance(data_provenance, dict)
-            else None
-        )
-        if not isinstance(warning, str) or not warning.strip():
-            violations.append("SYNTHETIC_DATA_WARNING_MISSING")
-        else:
-            notices.insert(0, warning)
+        if data_provenance is not None:
+            warning = data_provenance.get("warning")
+            is_synthetic = (
+                data_provenance.get("label") == "SYNTHETIC_DATA_PROTOTYPE"
+            )
+            if is_synthetic and (
+                not isinstance(warning, str) or not warning.strip()
+            ):
+                violations.append("SYNTHETIC_DATA_WARNING_MISSING")
+            elif isinstance(warning, str) and warning.strip():
+                notices.insert(0, warning)
 
-        explanation = run_result.final_response.text or ""
+        explanation = (final_response.text or "") if final_response is not None else ""
+        if final_response is None:
+            violations.append("LLM_FINAL_RESPONSE_MISSING")
         if re.search(r"\d", explanation):
             violations.append("LLM_EXPLANATION_CONTAINS_NUMBER")
 
