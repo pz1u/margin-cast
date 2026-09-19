@@ -82,6 +82,11 @@ WGS84 좌표로 변환하고 기상청 단기예보를 조회한 뒤 계산 엔�
 Policy를 통과하면 `COMPLETED`이며, UI 핵심 수치는 LLM 문장이 아닌 `facts`에서 읽는다.
 전체 ToolResult와 System Prompt는 반환하지 않는다.
 
+ENGINE 결과가 정상이고 LLM presentation만 숫자 정책을 위반한 경우에는 Response Policy가
+정적 설명으로 교체한 뒤 `COMPLETED`를 반환한다. 이때 `presentation.source`는
+`POLICY_FALLBACK`이며 정상 LLM 설명은 `LLM`이다. UI는 이 값을 일반 사용자에게 표시하지 않고
+개발 모드에서만 실행 추적에 사용한다. Decision, facts 또는 provenance 위반은 계속 `REJECTED`다.
+
 ```json
 {
   "session_id": "demo-price-1",

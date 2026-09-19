@@ -23,6 +23,7 @@ function completed(sessionId = "session-1") {
     presentation: {
       explanation: "설명에 999라는 다른 값이 있어도 카드 값으로 사용하지 않습니다.",
       next_action: "작게 검증해보세요.",
+      source: "POLICY_FALLBACK",
     },
     notices: ["합성 데이터 기반 프로토타입입니다."],
   };
@@ -70,6 +71,7 @@ test("COMPLETED는 facts와 presentation을 분리하고 notices를 보존한다
   assert.deepEqual(message.facts, response.facts);
   assert.equal(message.facts.profit_delta.value, 135000);
   assert.equal(message.explanation, response.presentation.explanation);
+  assert.equal(message.presentationSource, "POLICY_FALLBACK");
   assert.notEqual(message.explanation, String(message.facts.profit_delta.value));
   assert.deepEqual(message.notices, response.notices);
   assert.equal(message.recommendationId, "recommendation-1");

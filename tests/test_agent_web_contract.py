@@ -7,7 +7,7 @@ import unittest
 from src.agent_audit import AgentAuditStore
 from src.agent_result_router import AgentResultRouter
 from src.agent_runtime import AgentMissingInputError, AgentRuntime
-from src.agent_schemas import ToolCall
+from src.agent_schemas import DecisionAction, LLMResponse, ToolCall
 from src.agent_tool_contracts import execute_tool
 from src.agent_web_contract import AgentWebStatus, map_agent_result, map_runtime_error
 from src.decision_service import MarginCastDecisionService
@@ -69,7 +69,7 @@ class AgentWebContractTests(unittest.TestCase):
             )
             self.assertNotEqual(web_result.execution_id, web_result.recommendation_id)
 
-    def test_rejected_execution_is_audited_without_recommendation(self):
+    def test_presentation_fallback_is_completed_and_audited(self):
         with tempfile.TemporaryDirectory() as directory:
             audit_store = AgentAuditStore(Path(directory) / "audit.json")
             provider = MockLLMProvider(
@@ -84,15 +84,21 @@ class AgentWebContractTests(unittest.TestCase):
             web_result = map_agent_result(run_result, outcome)
             audit = audit_store.get_execution("execution-rejected")
 
-            self.assertEqual(web_result.status, AgentWebStatus.REJECTED)
-            self.assertIsNone(web_result.recommendation_id)
-            self.assertIsNone(outcome.agent_response)
+            self.assertEqual(web_result.status, AgentWebStatus.COMPLETED)
+            self.assertTrue(web_result.recommendation_id)
+            self.assertIsNotNone(outcome.agent_response)
             self.assertEqual(audit["execution_id"], "execution-rejected")
-            self.assertIsNone(audit["recommendation_id"])
-            self.assertEqual(audit["response_policy_status"], "REJECTED")
+            self.assertEqual(audit["recommendation_id"], web_result.recommendation_id)
+            self.assertEqual(audit["response_policy_status"], "PASS")
+            self.assertEqual(audit["initial_llm_policy_status"], "REJECTED")
             self.assertIn(
                 "LLM_EXPLANATION_CONTAINS_NUMBER",
                 audit["violation_codes"],
+            )
+            self.assertTrue(audit["fallback_used"])
+            self.assertEqual(
+                audit["final_presentation_source"],
+                "POLICY_FALLBACK",
             )
             self.assertEqual(
                 audit["called_tool_names"],
@@ -110,6 +116,37 @@ class AgentWebContractTests(unittest.TestCase):
                 provider.final_text.lower(),
             ):
                 self.assertNotIn(forbidden, serialized)
+
+    def test_decision_mismatch_remains_rejected_without_fallback(self):
+        class DecisionMismatchProvider(MockLLMProvider):
+            def generate(self, messages, tools):
+                response = super().generate(messages, tools)
+                if response.decision_claim is None:
+                    return response
+                mismatch = next(
+                    action
+                    for action in DecisionAction
+                    if action is not response.decision_claim
+                )
+                return LLMResponse(text=response.text, decision_claim=mismatch)
+
+        with tempfile.TemporaryDirectory() as directory:
+            audit_store = AgentAuditStore(Path(directory) / "audit.json")
+            run_result, outcome = self.run_and_route(
+                DecisionMismatchProvider(),
+                "execution-mismatch",
+                audit_store,
+            )
+
+            web_result = map_agent_result(run_result, outcome)
+            audit = audit_store.get_execution("execution-mismatch")
+
+            self.assertEqual(web_result.status, AgentWebStatus.REJECTED)
+            self.assertIsNone(web_result.recommendation_id)
+            self.assertIsNone(outcome.agent_response)
+            self.assertIn("DECISION_MISMATCH", audit["violation_codes"])
+            self.assertFalse(audit["fallback_used"])
+            self.assertIsNone(audit["final_presentation_source"])
 
     def test_missing_input_exception_maps_to_normal_web_state(self):
         provider = MockLLMProvider(

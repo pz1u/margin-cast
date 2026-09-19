@@ -5,7 +5,13 @@ import tempfile
 import unittest
 
 from src.agent_runtime import AgentRuntime
-from src.agent_schemas import DecisionAction, LLMResponse, ToolResult, ValueSource
+from src.agent_schemas import (
+    DecisionAction,
+    LLMResponse,
+    PresentationSource,
+    ToolResult,
+    ValueSource,
+)
 from src.agent_tool_contracts import execute_tool
 from src.decision_service import MarginCastDecisionService
 from src.generate_data import generate_dataset, save_dataset
@@ -117,6 +123,14 @@ class PriceResponsePolicyTests(unittest.TestCase):
             engine_action.value,
         )
         self.assertEqual(response.policy_validation["status"], "PASS")
+        self.assertEqual(response.presentation.source, PresentationSource.LLM)
+        self.assertEqual(response.explanation_source, PresentationSource.LLM)
+        self.assertEqual(
+            outcome.policy_validation["initial_llm_policy_status"],
+            "PASS",
+        )
+        self.assertFalse(outcome.policy_validation["fallback_used"])
+        self.assertEqual(outcome.policy_validation["presentation_source"], "LLM")
         self.assertIn(raw["data_provenance"]["warning"], response.notices)
         self.assertIn(selected["evidence_quality"]["interpretation"], response.notices)
 
@@ -148,6 +162,7 @@ class PriceResponsePolicyTests(unittest.TestCase):
 
         self.assertEqual(outcome.policy_validation["status"], "REJECTED")
         self.assertIn("DECISION_MISMATCH", outcome.policy_validation["violations"])
+        self.assertFalse(outcome.policy_validation["fallback_used"])
         self.assertIsNone(outcome.policy_validation["presented_decision"])
         self.assertIsNone(outcome.agent_response)
 
@@ -247,10 +262,45 @@ class PriceResponsePolicyTests(unittest.TestCase):
             "SELECTED_SCENARIO_NOT_FOUND",
             outcome.policy_validation["violations"],
         )
+        self.assertFalse(outcome.policy_validation["fallback_used"])
         self.assertIsNone(outcome.agent_response)
 
-    def test_numeric_llm_explanation_is_rejected(self):
+    def test_invalid_engine_facts_forbid_presentation_fallback(self):
         run_result = self.run_agent()
+        raw = deepcopy(run_result.tool_result.raw)
+        selected_id = raw["recommended_action"]["scenario_id"]
+        selected = next(
+            strategy
+            for strategy in raw["strategies"]
+            if strategy["scenario_id"] == selected_id
+        )
+        del selected["units"]["mean"]
+        engine_action = DecisionAction(raw["recommended_action"]["action"])
+        changed = replace(
+            self.replace_raw(run_result, raw),
+            final_response=LLMResponse(
+                text="이익 개선 확률은 82%입니다.",
+                decision_claim=engine_action,
+            ),
+        )
+
+        outcome = self.policy.evaluate(changed)
+
+        self.assertEqual(outcome.policy_validation["status"], "REJECTED")
+        self.assertIn(
+            "SELECTED_SCENARIO_FACTS_INVALID",
+            outcome.policy_validation["violations"],
+        )
+        self.assertIn(
+            "LLM_EXPLANATION_CONTAINS_NUMBER",
+            outcome.policy_validation["violations"],
+        )
+        self.assertFalse(outcome.policy_validation["fallback_used"])
+        self.assertIsNone(outcome.agent_response)
+
+    def test_numeric_llm_explanation_uses_safe_fallback(self):
+        run_result = self.run_agent()
+        original = self.policy.evaluate(run_result).agent_response
         engine_action = DecisionAction(
             run_result.tool_result.raw["recommended_action"]["action"]
         )
@@ -264,12 +314,29 @@ class PriceResponsePolicyTests(unittest.TestCase):
 
         outcome = self.policy.evaluate(changed)
 
-        self.assertEqual(outcome.policy_validation["status"], "REJECTED")
+        self.assertEqual(outcome.policy_validation["status"], "PASS")
+        self.assertEqual(
+            outcome.policy_validation["initial_llm_policy_status"],
+            "REJECTED",
+        )
         self.assertIn(
             "LLM_EXPLANATION_CONTAINS_NUMBER",
-            outcome.policy_validation["violations"],
+            outcome.policy_validation["initial_violations"],
         )
-        self.assertIsNone(outcome.agent_response)
+        self.assertTrue(outcome.policy_validation["fallback_used"])
+        self.assertEqual(
+            outcome.policy_validation["presentation_source"],
+            "POLICY_FALLBACK",
+        )
+        response = outcome.agent_response
+        self.assertIsNotNone(response)
+        self.assertEqual(response.presentation.source, PresentationSource.POLICY_FALLBACK)
+        self.assertEqual(response.explanation_source, PresentationSource.POLICY_FALLBACK)
+        self.assertNotRegex(response.explanation, r"\d")
+        self.assertNotRegex(response.presentation.next_action, r"\d")
+        self.assertEqual(response.facts, original.facts)
+        self.assertEqual(response.fact_provenance, original.fact_provenance)
+        self.assertEqual(response.decision, original.decision)
 
     def test_next_action_is_exposed_only_after_policy_passes(self):
         run_result = self.run_agent()
@@ -293,7 +360,7 @@ class PriceResponsePolicyTests(unittest.TestCase):
             "작은 범위의 검증을 준비해주세요.",
         )
 
-    def test_numeric_next_action_is_rejected(self):
+    def test_numeric_next_action_uses_safe_fallback(self):
         run_result = self.run_agent()
         engine_action = DecisionAction(
             run_result.tool_result.raw["recommended_action"]["action"]
@@ -309,12 +376,17 @@ class PriceResponsePolicyTests(unittest.TestCase):
 
         outcome = self.policy.evaluate(changed)
 
-        self.assertEqual(outcome.policy_validation["status"], "REJECTED")
+        self.assertEqual(outcome.policy_validation["status"], "PASS")
         self.assertIn(
             "LLM_NEXT_ACTION_CONTAINS_NUMBER",
-            outcome.policy_validation["violations"],
+            outcome.policy_validation["initial_violations"],
         )
-        self.assertIsNone(outcome.agent_response)
+        self.assertTrue(outcome.policy_validation["fallback_used"])
+        self.assertEqual(
+            outcome.agent_response.presentation.source,
+            PresentationSource.POLICY_FALLBACK,
+        )
+        self.assertNotRegex(outcome.agent_response.presentation.next_action, r"\d")
 
 
 if __name__ == "__main__":

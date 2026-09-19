@@ -146,6 +146,8 @@ function renderResultCard(message) {
     reference.append(createElement("dd", "", message.executionId || "—"));
     reference.append(createElement("dt", "", "recommendation_id"));
     reference.append(createElement("dd", "", message.recommendationId || "—"));
+    reference.append(createElement("dt", "", "presentation_source"));
+    reference.append(createElement("dd", "", message.presentationSource || "—"));
     details.append(reference);
     card.append(details);
   }

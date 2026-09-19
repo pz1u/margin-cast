@@ -97,6 +97,7 @@ def _serialize_web_result(session_id: str, result: AgentWebResult) -> JsonObject
                 "presentation": {
                     "explanation": response.explanation,
                     "next_action": response.presentation.next_action,
+                    "source": response.presentation.source.value,
                 },
                 "notices": list(response.notices),
             }

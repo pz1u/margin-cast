@@ -7,6 +7,7 @@ import unittest
 
 from src.agent_audit import AgentAuditStore
 from src.agent_chat_service import AgentChatService, MemorySessionStore
+from src.agent_schemas import DecisionAction, LLMResponse
 from src.agent_tool_contracts import execute_tool
 from src.decision_service import MarginCastDecisionService
 from src.generate_data import generate_dataset, save_dataset
@@ -42,6 +43,17 @@ class FailingProvider:
 
     def generate(self, messages, tools):
         raise RuntimeError("internal stack api_key=secret-value")
+
+
+class DecisionMismatchProvider(MockLLMProvider):
+    def generate(self, messages, tools):
+        response = super().generate(messages, tools)
+        if response.decision_claim is None:
+            return response
+        mismatch = next(
+            action for action in DecisionAction if action is not response.decision_claim
+        )
+        return LLMResponse(text=response.text, decision_claim=mismatch)
 
 
 class AgentHttpApiTests(unittest.TestCase):
@@ -187,7 +199,7 @@ class AgentHttpApiTests(unittest.TestCase):
         self.assertIsNone(self.session_store.get("session-b").selected_menu)
         self.assertEqual(self.executor.calls, [])
 
-    def test_rejected_response_is_structured_without_llm_text(self):
+    def test_numeric_presentation_uses_fallback_completed_response(self):
         service = self.chat_service(
             lambda: MockLLMProvider(
                 final_text="합성 데이터이며 근거 품질은 미보정 상태입니다. 7"
@@ -199,14 +211,27 @@ class AgentHttpApiTests(unittest.TestCase):
             "session-rejected",
         )
 
+        self.assertEqual((status, payload["status"]), (200, "COMPLETED"))
+        self.assertTrue(payload["recommendation_id"])
+        self.assertEqual(payload["presentation"]["source"], "POLICY_FALLBACK")
+        self.assertNotRegex(payload["presentation"]["explanation"], r"\d")
+        self.assertIn("facts", payload)
+        self.assertTrue(payload["execution_id"])
+
+    def test_decision_mismatch_is_structured_rejected_response(self):
+        status, payload = self.request(
+            self.chat_service(lambda: DecisionMismatchProvider()),
+            "치킨마요를 9,500원으로 올리면 어때?",
+            "session-rejected",
+        )
+
         self.assertEqual((status, payload["status"]), (200, "REJECTED"))
         self.assertIsNone(payload["recommendation_id"])
         self.assertIn(
-            "LLM_EXPLANATION_CONTAINS_NUMBER",
+            "DECISION_MISMATCH",
             payload["policy_validation"]["violation_codes"],
         )
         self.assertNotIn("presentation", payload)
-        self.assertTrue(payload["execution_id"])
 
     def test_error_does_not_expose_internal_exception_or_stack(self):
         status, payload = self.request(

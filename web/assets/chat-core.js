@@ -52,6 +52,7 @@
           kind: "completed",
           explanation: String(payload.presentation?.explanation || ""),
           nextAction: String(payload.presentation?.next_action || ""),
+          presentationSource: String(payload.presentation?.source || "LLM"),
           facts: SAFE_COPY(payload.facts || {}),
           notices: Array.isArray(payload.notices) ? payload.notices.map(String) : [],
           recommendationId: payload.recommendation_id || null,

@@ -230,7 +230,10 @@ class AgentFeedbackWorkflowTests(unittest.TestCase):
         serialized = json.dumps(audit, ensure_ascii=False).lower()
         self.assertEqual(audit["engine_decision"], audit["presented_decision"])
         self.assertEqual(audit["response_policy_status"], "PASS")
+        self.assertEqual(audit["initial_llm_policy_status"], "PASS")
         self.assertEqual(audit["violation_codes"], [])
+        self.assertFalse(audit["fallback_used"])
+        self.assertEqual(audit["final_presentation_source"], "LLM")
         self.assertTrue(audit["tool_result_ref"].startswith("sha256:"))
         self.assertEqual(
             set(audit),
@@ -244,7 +247,10 @@ class AgentFeedbackWorkflowTests(unittest.TestCase):
                 "engine_decision",
                 "presented_decision",
                 "response_policy_status",
+                "initial_llm_policy_status",
                 "violation_codes",
+                "fallback_used",
+                "final_presentation_source",
                 "feedback_id",
                 "feedback_status",
                 "tool_result_ref",

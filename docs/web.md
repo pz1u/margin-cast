@@ -34,7 +34,7 @@ stack trace를 표시하지 않는다. 새 대화는 브라우저 메모리의 �
 결과 카드 숫자는 `facts`만 사용한다. `presentation.explanation`이나 `presentation.next_action`에서
 숫자를 파싱하지 않는다. 각 fact의 `source`와 `source_ref`는 기본 화면에서 숨기며, 필요하면
 API 응답에서 확인한다. `?debug=1`에서는 민감하지 않은 `execution_id`와 `recommendation_id`만
-추가로 표시한다.
+추가로 표시하며, 정적 안전 설명이 사용됐는지 확인할 수 있도록 `presentation_source`도 표시한다.
 
 합성 데이터 warning과 근거 품질 고지는 결과 카드 하단의 `데이터와 가정` 영역에 표시한다.
 페이지 footer에도 프로토타입이 실제 매장 성과를 보증하지 않는다는 고정 고지를 둔다.

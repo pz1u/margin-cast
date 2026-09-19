@@ -462,6 +462,12 @@ capabilities, 선택 메뉴, draft scenario, pending question과 추천 스냅�
 두 번째 입력으로 부족한 가격을 채울 수 있으며 전체 대화 원문과 ToolResult는 HTTP 응답에 노출하지
 않는다. 채팅 UI는 G2 범위로 남긴다.
 
+H0에서는 ToolResult, ENGINE facts, Decision, provenance와 필수 고지가 모두 정상인데 LLM 설명이나
+다음 행동에 숫자가 포함된 경우에만 정적 presentation으로 교체한다. 정적 문장은 ENGINE Decision,
+근거 품질과 데이터 provenance만 사용하며 새로운 계산값이나 사업 가정을 만들지 않는다. 최초 LLM
+검증 결과와 최종 PASS를 감사 로그에 따로 남긴다. Decision 불일치, ENGINE facts 오류, provenance
+오류와 필수 고지 데이터 누락에는 fallback을 적용하지 않는다.
+
 첫 세로 흐름은 `가격 질문 → Mock LLM → 가격 도구 → Response Policy → AgentResponse` 하나로
 제한한다. 이 흐름이 통과한 뒤 할인·날씨·세트·피드백을 같은 계약에 연결한다.
 

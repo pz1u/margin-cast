@@ -127,7 +127,20 @@ class AgentAuditStore:
             "engine_decision": policy_validation.get("engine_decision"),
             "presented_decision": policy_validation.get("presented_decision"),
             "response_policy_status": policy_validation.get("status"),
-            "violation_codes": list(policy_validation.get("violations", [])),
+            "initial_llm_policy_status": policy_validation.get(
+                "initial_llm_policy_status",
+                policy_validation.get("status"),
+            ),
+            "violation_codes": list(
+                policy_validation.get(
+                    "initial_violations",
+                    policy_validation.get("violations", []),
+                )
+            ),
+            "fallback_used": bool(policy_validation.get("fallback_used", False)),
+            "final_presentation_source": policy_validation.get(
+                "presentation_source"
+            ),
             "feedback_id": None,
             "feedback_status": "not_planned" if recommendation_id else None,
             "tool_result_ref": tool_result_reference(run_result.tool_result.raw),

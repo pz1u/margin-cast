@@ -20,6 +20,13 @@ class ValueSource(str, Enum):
     LLM = "LLM"
 
 
+class PresentationSource(str, Enum):
+    """사용자에게 표시한 정성적 설명을 만든 주체."""
+
+    LLM = "LLM"
+    POLICY_FALLBACK = "POLICY_FALLBACK"
+
+
 @dataclass(frozen=True)
 class Provenance:
     """한 값의 출처와 원본 위치."""
@@ -341,10 +348,13 @@ class AgentPresentation:
     """정책 검증을 통과한 정성적 UI 표현."""
 
     next_action: str | None = None
+    source: PresentationSource = PresentationSource.LLM
 
     def __post_init__(self) -> None:
         if self.next_action is not None:
             _require_text(self.next_action, "next_action")
+        if not isinstance(self.source, PresentationSource):
+            raise TypeError("presentation.source는 PresentationSource여야 합니다.")
 
 
 @dataclass(frozen=True)
@@ -359,7 +369,10 @@ class AgentResponse:
     evidence: Evidence | None = None
     explanation: str | None = None
     presentation: AgentPresentation = field(default_factory=AgentPresentation)
-    explanation_source: ValueSource = field(default=ValueSource.LLM, init=False)
+    explanation_source: PresentationSource = field(
+        default=PresentationSource.LLM,
+        init=False,
+    )
     notices: tuple[str, ...] = ()
     policy_validation: JsonObject = field(default_factory=dict)
     missing_input: MissingInput | None = None
@@ -409,6 +422,7 @@ class AgentResponse:
         object.__setattr__(self, "notices", notices)
         object.__setattr__(self, "policy_validation", policy_validation)
         object.__setattr__(self, "tool_results", tool_results)
+        object.__setattr__(self, "explanation_source", self.presentation.source)
 
 
 @dataclass(frozen=True)
