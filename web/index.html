@@ -3,84 +3,333 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="매장 가격 결정을 계산 엔진으로 검토하는 MarginCast Agent">
-  <title>MarginCast Agent — 가격 결정 시뮬레이션</title>
+  <meta name="description" content="POS 데이터와 메뉴 원가로 가격·세트 전략을 실행 전에 검토하는 MarginCast">
+  <title>MarginCast — 매장 전략 시뮬레이션</title>
   <link rel="stylesheet" href="/assets/styles.css">
 </head>
 <body>
-  <a class="skip-link" href="#chat-composer">대화 입력으로 이동</a>
+  <a class="skip-link" href="#main-content">본문으로 이동</a>
 
   <header class="site-header">
-    <a class="brand" href="/" aria-label="MarginCast Agent 홈">
+    <a class="brand" href="/" aria-label="MarginCast 홈">
       <span class="brand-mark" aria-hidden="true">MC</span>
       <span class="brand-copy">
         <strong>MarginCast</strong>
-        <small>Decision Agent</small>
+        <small>Decision Engine</small>
       </span>
     </a>
     <div class="header-actions">
-      <span class="service-status"><i aria-hidden="true"></i>가격 분석 준비</span>
-      <button class="new-chat-button" id="new-chat" type="button">새 대화</button>
+      <span class="service-status"><i aria-hidden="true"></i><span id="service-status">계산 엔진 연결 중</span></span>
+      <button class="new-chat-button" id="new-chat" type="button" hidden>새 대화</button>
     </div>
   </header>
 
-  <main class="workspace">
-    <aside class="context-rail" aria-labelledby="context-title">
-      <p class="eyebrow">PRICE DECISION / G2</p>
-      <h1 id="context-title">가격을 바꾸기 전에<br>이익의 범위를 봅니다.</h1>
-      <p class="context-copy">
-        Agent는 질문을 정리하고 계산 도구를 호출합니다. 판매량, 이익, 확률과 판단은
-        MarginCast 계산 엔진의 결과만 보여드립니다.
-      </p>
+  <nav class="app-tabs" aria-label="주요 화면" role="tablist">
+    <button class="app-tab is-active" id="dashboard-tab" role="tab" aria-selected="true" tabindex="0" aria-controls="dashboard-panel" data-panel="dashboard">대시보드</button>
+    <button class="app-tab" id="menus-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="menus-panel" data-panel="menus">메뉴 관리</button>
+    <button class="app-tab" id="strategy-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="strategy-panel" data-panel="strategy">전략 시뮬레이션</button>
+    <button class="app-tab" id="agent-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="agent-panel" data-panel="agent">AI 상담</button>
+  </nav>
 
-      <div class="scope-card">
-        <p class="scope-label">현재 지원</p>
-        <strong>메뉴 가격 시뮬레이션</strong>
-        <p>메뉴명과 변경할 가격을 말씀해주세요.</p>
-        <button class="example-prompt" type="button" data-prompt="치킨마요를 9,500원으로 올리면 어때?">
-          “치킨마요를 9,500원으로 올리면 어때?”
-        </button>
-      </div>
-
-      <dl class="trust-list">
-        <div><dt>계산</dt><dd>MarginCast Engine</dd></div>
-        <div><dt>판단</dt><dd>RECOMMEND · EXPERIMENT · HOLD</dd></div>
-        <div><dt>대화</dt><dd>Local Ollama</dd></div>
-      </dl>
-    </aside>
-
-    <section class="chat-panel" aria-labelledby="chat-title">
-      <div class="chat-heading">
+  <main id="main-content">
+    <section class="page" id="dashboard-panel" role="tabpanel" aria-labelledby="dashboard-tab">
+      <div class="page-head">
         <div>
-          <p class="section-label">DECISION CONVERSATION</p>
-          <h2 id="chat-title">가격 전략 상담</h2>
+          <p class="eyebrow">STORE OVERVIEW</p>
+          <h1 class="page-title">우리 매장의 데이터로<br>전략을 검토합니다.</h1>
         </div>
-        <p class="privacy-note">대화 원문은 장기 저장하지 않습니다</p>
+        <p class="page-copy">POS 데이터와 메뉴 원가를 기준으로 가격·세트 전략의 이익 범위를 실행 전에 비교합니다.</p>
       </div>
 
-      <div class="message-list" id="chat-messages" aria-live="polite" aria-busy="false">
-        <article class="message message-agent message-welcome">
-          <span class="message-author">MarginCast Agent</span>
-          <p>검토할 메뉴와 변경 가격을 알려주세요. 필요한 값이 빠졌다면 하나씩 여쭤볼게요.</p>
-        </article>
-      </div>
+      <p class="notice-strip" id="demo-notice"><strong>데모</strong><span>매장 데이터 상태를 확인하는 중입니다.</span></p>
 
-      <form class="chat-composer" id="chat-composer">
-        <label class="visually-hidden" for="chat-input">가격 전략 질문</label>
-        <textarea
-          id="chat-input"
-          name="message"
-          rows="1"
-          maxlength="2000"
-          placeholder="예: 치킨마요를 9,500원으로 올리면 어때?"
-          required
-        ></textarea>
-        <button class="send-button" id="send-button" type="submit" aria-label="메시지 보내기">
-          <span>전송</span><span aria-hidden="true">↗</span>
-        </button>
-        <p class="composer-hint">Enter 전송 · Shift + Enter 줄바꿈</p>
-      </form>
+      <section class="block" aria-labelledby="pos-title">
+        <div class="block-head"><h2 id="pos-title">매장 데이터 상태</h2><span class="tag" id="pos-tag">확인 중</span></div>
+        <dl class="status-grid" id="status-grid">
+          <div><dt>POS 연동 상태</dt><dd id="st-connection">-</dd></div>
+          <div><dt>최근 동기화</dt><dd id="st-synced">-</dd></div>
+          <div><dt>주문 데이터</dt><dd id="st-orders">-</dd></div>
+          <div><dt>메뉴 개수</dt><dd id="st-menus">-</dd></div>
+          <div><dt>분석 가능 메뉴</dt><dd id="st-analyzable">-</dd></div>
+          <div><dt>데이터 출처</dt><dd id="st-dataset">-</dd></div>
+        </dl>
+        <div class="block-actions">
+          <button class="text-button" type="button" data-goto="menus">메뉴 관리에서 원가 확인하기 →</button>
+          <button class="text-button" type="button" data-goto="strategy">전략 시뮬레이션 시작하기 →</button>
+        </div>
+      </section>
+
+      <div class="two-column">
+        <section class="block" aria-labelledby="fee-title">
+          <div class="block-head"><h2 id="fee-title">수수료</h2><span class="tag">현재 엔진 적용값 · 읽기 전용</span></div>
+          <table class="fee-table">
+            <thead><tr><th scope="col">채널</th><th scope="col" class="num">플랫폼</th><th scope="col" class="num">결제</th></tr></thead>
+            <tbody id="fee-rows"></tbody>
+          </table>
+          <p class="hint">계산 엔진이 실제로 사용하는 값입니다. 기여이익은 할인 후 매출에서 식재료 원가와 이 수수료를 뺀 값입니다.</p>
+        </section>
+
+        <section class="block" aria-labelledby="location-title">
+          <div class="block-head"><h2 id="location-title">매장 위치</h2><span class="tag">준비 중</span></div>
+          <p class="location-status" id="location-status"></p>
+          <p class="hint">현재 위치 사용과 매장 검색은 다음 단계에서 연결합니다. 그 전까지 날씨는 최근 관측값을 기준으로 합니다.</p>
+        </section>
+      </div>
     </section>
+
+    <section class="page" id="menus-panel" role="tabpanel" aria-labelledby="menus-tab" hidden>
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">MENU MANAGEMENT</p>
+          <h1 class="page-title">메뉴와 원가</h1>
+        </div>
+        <p class="page-copy">POS에서 가져온 메뉴의 식재료 원가를 확인하고 수정하면 원가율과 단품 기여이익을 자동으로 계산합니다. 수정한 원가는 전략 시뮬레이션의 기여이익에도 반영됩니다.</p>
+      </div>
+
+      <div class="toolbar">
+        <p class="hint" id="menu-summary"></p>
+        <button class="solid-button" type="button" id="add-menu-toggle" aria-expanded="false" aria-controls="add-menu-form">+ 메뉴 추가</button>
+      </div>
+
+      <form class="block add-menu" id="add-menu-form" hidden>
+        <div class="block-head"><h2>새 메뉴 추가</h2></div>
+        <div class="field-grid">
+          <label>메뉴명<input id="new-name" maxlength="30" required></label>
+          <label>카테고리<select id="new-category"><option value="MAIN">메인</option><option value="SIDE">사이드</option><option value="DRINK">음료</option></select></label>
+          <label>판매가<span class="input-unit"><input id="new-price" type="number" min="1000" max="100000" step="100" required><small>원</small></span></label>
+          <label>식재료 원가<span class="input-unit"><input id="new-cost" type="number" min="0" max="100000" step="10" required><small>원</small></span></label>
+          <fieldset class="channel-field">
+            <legend>판매 채널</legend>
+            <label class="check"><input type="checkbox" name="new-channel" value="STORE" checked><span>매장</span></label>
+            <label class="check"><input type="checkbox" name="new-channel" value="DELIVERY" checked><span>배달</span></label>
+          </fieldset>
+        </div>
+        <dl class="preview-row" aria-live="polite">
+          <div><dt>원가율</dt><dd id="new-cost-rate">-</dd></div>
+          <div><dt>단품 기여이익</dt><dd id="new-contribution">-</dd></div>
+        </dl>
+        <p class="notice-strip is-wait"><strong>안내</strong><span>새 메뉴는 판매·가격 변경 이력이 없어 저장 후에도 가격 시뮬레이션과 성공확률을 제공하지 않습니다.</span></p>
+        <div class="form-actions">
+          <button class="solid-button" type="submit" id="add-menu-submit">메뉴 저장</button>
+          <button class="text-button" type="button" id="add-menu-cancel">닫기</button>
+        </div>
+        <p class="form-message" id="add-menu-message" role="alert"></p>
+      </form>
+
+      <div class="table-wrap">
+        <table class="menu-table" id="menu-table">
+          <thead>
+            <tr>
+              <th scope="col" data-debug-only>내부 ID</th>
+              <th scope="col">메뉴</th>
+              <th scope="col" class="num">판매가</th>
+              <th scope="col" class="num">식재료 원가</th>
+              <th scope="col" class="num">원가율</th>
+              <th scope="col" class="num">단품 기여이익</th>
+              <th scope="col">분석 상태</th>
+            </tr>
+          </thead>
+          <tbody id="menu-rows"></tbody>
+        </table>
+      </div>
+      <p class="hint">판매가는 POS 값이라 이 화면에서 수정하지 않습니다. 단품 기여이익은 매장·배달 판매 비중과 수수료를 반영한 1개당 값입니다.</p>
+      <p class="form-message" id="menu-message" role="alert"></p>
+    </section>
+
+    <section class="page" id="strategy-panel" role="tabpanel" aria-labelledby="strategy-tab" hidden>
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">STRATEGY SIMULATION</p>
+          <h1 class="page-title">바꾸기 전에<br>이익의 범위를 봅니다.</h1>
+        </div>
+        <p class="page-copy">가격·할인 또는 세트 구성을 정하면 기여이익 변화와 개선확률, 근거 품질을 함께 보여줍니다.</p>
+      </div>
+
+      <div class="subtabs" role="tablist" aria-label="전략 종류">
+        <button class="subtab is-active" id="price-subtab" role="tab" aria-selected="true" data-strategy="price">가격 · 할인</button>
+        <button class="subtab" id="bundle-subtab" role="tab" aria-selected="false" data-strategy="bundle">세트 구성</button>
+      </div>
+
+      <div class="simulator" id="price-strategy">
+        <form class="control-panel" id="price-form">
+          <div class="field-grid">
+            <label class="wide">메뉴<select id="price-menu" required></select></label>
+            <label>분석 기간<select id="price-horizon"><option value="7">7일</option><option value="14">14일</option><option value="30">30일</option></select></label>
+          </div>
+          <p class="hint" id="price-menu-note"></p>
+          <p class="cost-line" id="price-cost-line"></p>
+
+          <div class="scenario-heading">
+            <div><span class="field-label">변경 가격 또는 할인</span><p class="hint">현재 가격은 자동으로 함께 계산합니다.</p></div>
+            <button class="text-button" type="button" id="add-scenario">+ 대안 추가</button>
+          </div>
+          <div class="scenario-list" id="scenario-list"></div>
+
+          <div class="debug-box" data-debug-only>
+            <p class="debug-title">개발자 설정 (?debug=1)</p>
+            <div class="field-grid">
+              <label>Monte Carlo 반복<input id="price-simulations" type="number" min="100" max="50000" step="100"></label>
+              <label>재현 seed<input id="price-seed" type="number" min="0" max="4294967295"></label>
+            </div>
+          </div>
+
+          <button class="solid-button block-button" id="price-submit" type="submit">전략 비교하기</button>
+          <p class="form-message" id="price-message" role="alert"></p>
+        </form>
+
+        <section class="result-panel" aria-labelledby="price-result-title">
+          <div class="result-head"><h2 id="price-result-title">의사결정 요약</h2><span class="decision-badge is-idle" id="price-decision">계산 전</span></div>
+          <div class="empty-result" id="price-empty">
+            <h4>비교할 가격을 입력하세요.</h4>
+            <p>기준 수요를 계산하고 불확실성을 반영해 기대 기여이익과 하방 위험을 함께 보여줍니다.</p>
+          </div>
+          <div class="result-content" id="price-result" hidden>
+            <p class="stale-note" id="price-stale" hidden>입력이 바뀌었습니다. 아래 결과는 이전 조건의 계산입니다. 다시 계산하세요.</p>
+            <p class="recommendation-name" id="price-recommendation-name"></p>
+            <p class="recommendation-reason" id="price-recommendation-reason"></p>
+            <div class="metric-grid">
+              <div class="metric-primary"><span>기대 기여이익 변화</span><strong id="price-profit-delta">-</strong></div>
+              <div><span>80% 예상 범위</span><strong id="price-profit-range">-</strong></div>
+              <div><span>개선확률</span><strong id="price-success">-</strong></div>
+              <div><span>근거 품질</span><strong id="price-confidence">-</strong></div>
+            </div>
+            <div class="comparison-block">
+              <div class="result-subheading"><h4>전략별 기여이익</h4><span>막대는 기대값 기준</span></div>
+              <div class="bar-chart" id="price-chart"></div>
+            </div>
+            <aside class="evidence-note"><span>해석 기준</span><p id="price-evidence"></p></aside>
+            <aside class="evidence-note"><span>계산 기준</span><p id="price-basis"></p></aside>
+            <details class="debug-box" data-debug-only><summary>모델 파라미터</summary><pre id="price-debug"></pre></details>
+          </div>
+        </section>
+      </div>
+
+      <div class="simulator" id="bundle-strategy" hidden>
+        <form class="control-panel" id="bundle-form">
+          <div class="field-grid">
+            <label class="wide">주메뉴<select id="bundle-main" required></select></label>
+          </div>
+          <fieldset class="component-field">
+            <legend>구성 메뉴 <small>(1~4개)</small></legend>
+            <div class="check-list" id="bundle-components"></div>
+          </fieldset>
+          <div class="field-grid">
+            <label>세트 가격<span class="input-unit"><input id="bundle-price" type="number" min="1000" max="100000" step="100" required><small>원</small></span></label>
+            <label>분석 기간<select id="bundle-horizon"><option value="7">7일</option><option value="14">14일</option><option value="30">30일</option></select></label>
+          </div>
+          <p class="hint" id="bundle-price-note"></p>
+          <p class="hint">새로 추가한 메뉴는 판매 이력이 쌓이면 세트 구성에 사용할 수 있습니다.</p>
+
+          <div class="debug-box" data-debug-only>
+            <p class="debug-title">개발자 설정 (?debug=1)</p>
+            <div class="field-grid">
+              <label>Monte Carlo 반복<input id="bundle-simulations" type="number" min="100" max="50000" step="100"></label>
+              <label>재현 seed<input id="bundle-seed" type="number" min="0" max="4294967295"></label>
+            </div>
+          </div>
+
+          <section class="observation" aria-labelledby="observation-title" aria-live="polite">
+            <h4 id="observation-title">POS에서 확인된 값</h4>
+            <dl class="observed-list" id="bundle-observed"></dl>
+            <h4>판매 데이터만으로 확인할 수 없는 값</h4>
+            <p class="hint">아래 값은 과거 주문만으로 알 수 없어 계획용 가정으로만 비교합니다.</p>
+            <ul class="unknown-list" id="bundle-unknown"></ul>
+          </section>
+
+          <button class="solid-button block-button" id="bundle-plan-submit" type="button">계획 시나리오로 비교</button>
+          <details class="advanced-options" id="bundle-advanced">
+            <summary>고급 가정 직접 입력</summary>
+            <p class="hint">네 값을 모두 직접 입력해야 계산합니다. 비워 둔 값은 채우지 않습니다.</p>
+            <div class="field-grid" id="bundle-rate-grid">
+              <label>단품 고객 전환율<span class="input-unit"><input data-rate="take_rate" type="number" min="0" max="100" step="1"><small>%</small></span></label>
+              <label>기존 동시구매 전환율<span class="input-unit"><input data-rate="copurchase_take_rate" type="number" min="0" max="100" step="1"><small>%</small></span></label>
+              <label>신규 수요율<span class="input-unit"><input data-rate="incremental_demand_rate" type="number" min="0" max="100" step="1"><small>%</small></span></label>
+              <label>다른 메뉴 잠식률<span class="input-unit"><input data-rate="cannibalization_rate" type="number" min="0" max="100" step="1"><small>%</small></span></label>
+            </div>
+            <button class="ghost-button" id="bundle-manual-submit" type="button">직접 입력 값으로 계산</button>
+          </details>
+          <p class="form-message" id="bundle-message" role="alert"></p>
+        </form>
+
+        <section class="result-panel" aria-labelledby="bundle-result-title">
+          <div class="result-head"><h2 id="bundle-result-title">세트 판단 요약</h2></div>
+          <div class="empty-result" id="bundle-empty">
+            <h4>세트 구성을 고르면 관측값부터 보여줍니다.</h4>
+            <p>예상 이익이 높더라도 근거가 계획용 가정뿐이면 작은 실험부터 권합니다.</p>
+          </div>
+          <div class="result-content" id="bundle-result" hidden>
+            <p class="stale-note" id="bundle-stale" hidden>입력이 바뀌었습니다. 아래 결과는 이전 조건의 계산입니다. 다시 계산하세요.</p>
+            <div class="table-wrap">
+              <table class="bundle-table">
+                <thead><tr><th scope="col">시나리오</th><th scope="col" class="num">기대 기여이익 변화</th><th scope="col" class="num">80% 범위</th><th scope="col" class="num">개선확률</th><th scope="col">근거 품질</th><th scope="col">판단</th></tr></thead>
+                <tbody id="bundle-rows"></tbody>
+              </table>
+            </div>
+            <aside class="evidence-note"><span>해석 기준</span><p id="bundle-evidence"></p></aside>
+            <aside class="evidence-note"><span>계산 기준</span><p id="bundle-basis"></p></aside>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <div class="workspace" id="agent-panel" role="tabpanel" aria-labelledby="agent-tab" hidden>
+      <aside class="context-rail" aria-labelledby="context-title">
+        <p class="eyebrow">AI 상담</p>
+        <h1 id="context-title" class="rail-title">가격을 바꾸기 전에<br>이익의 범위를 봅니다.</h1>
+        <p class="context-copy">
+          Agent는 질문을 정리하고 계산 도구를 호출합니다. 판매량, 이익, 확률과 판단은
+          MarginCast 계산 엔진의 결과만 보여드립니다.
+        </p>
+
+        <div class="scope-card">
+          <p class="scope-label">현재 지원</p>
+          <strong>메뉴 가격 시뮬레이션</strong>
+          <p>메뉴명과 변경할 가격을 말씀해주세요.</p>
+          <button class="example-prompt" type="button" data-prompt="치킨마요를 9,500원으로 올리면 어때?">
+            “치킨마요를 9,500원으로 올리면 어때?”
+          </button>
+        </div>
+
+        <dl class="trust-list">
+          <div><dt>계산</dt><dd>MarginCast Engine</dd></div>
+          <div><dt>판단</dt><dd>RECOMMEND · EXPERIMENT · HOLD</dd></div>
+          <div><dt>대화</dt><dd>Local Ollama</dd></div>
+        </dl>
+      </aside>
+
+      <section class="chat-panel" aria-labelledby="chat-title">
+        <div class="chat-heading">
+          <div>
+            <p class="section-label">DECISION CONVERSATION</p>
+            <h2 id="chat-title">가격 전략 상담</h2>
+          </div>
+          <p class="privacy-note">대화 원문은 장기 저장하지 않습니다</p>
+        </div>
+
+        <div class="message-list" id="chat-messages" aria-live="polite" aria-busy="false">
+          <article class="message message-agent message-welcome">
+            <span class="message-author">MarginCast Agent</span>
+            <p>검토할 메뉴와 변경 가격을 알려주세요. 필요한 값이 빠졌다면 하나씩 여쭤볼게요.</p>
+          </article>
+        </div>
+
+        <form class="chat-composer" id="chat-composer">
+          <label class="visually-hidden" for="chat-input">가격 전략 질문</label>
+          <textarea
+            id="chat-input"
+            name="message"
+            rows="1"
+            maxlength="2000"
+            placeholder="예: 치킨마요를 9,500원으로 올리면 어때?"
+            required
+          ></textarea>
+          <button class="send-button" id="send-button" type="submit" aria-label="메시지 보내기">
+            <span>전송</span><span aria-hidden="true">↗</span>
+          </button>
+          <p class="composer-hint">Enter 전송 · Shift + Enter 줄바꿈</p>
+        </form>
+      </section>
+    </div>
   </main>
 
   <footer>
@@ -88,7 +337,18 @@
     <p>합성 데이터 기반 프로토타입 · 실제 매장 성과를 보증하지 않습니다.</p>
   </footer>
 
+  <template id="scenario-template">
+    <fieldset class="scenario-row">
+      <legend class="visually-hidden">가격 대안</legend>
+      <label>변경 가격<span class="input-unit"><input class="scenario-price" type="number" min="1000" max="100000" step="100" required><small>원</small></span></label>
+      <label>할인<span class="input-unit"><input class="scenario-discount" type="number" min="0" step="100" value="0" required><small>원</small></span></label>
+      <button class="remove-button" type="button" aria-label="이 대안 삭제">×</button>
+    </fieldset>
+  </template>
+
   <script src="/assets/chat-core.js" defer></script>
+  <script src="/assets/store-model.js" defer></script>
   <script src="/assets/app.js" defer></script>
+  <script src="/assets/store-ui.js" defer></script>
 </body>
 </html>
