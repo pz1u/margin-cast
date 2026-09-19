@@ -335,6 +335,8 @@ class AgentResponse:
     evidence: Evidence | None = None
     explanation: str | None = None
     explanation_source: ValueSource = field(default=ValueSource.LLM, init=False)
+    notices: tuple[str, ...] = ()
+    policy_validation: JsonObject = field(default_factory=dict)
     missing_input: MissingInput | None = None
     error: AgentError | None = None
     tool_results: tuple[ToolResult, ...] = ()
@@ -350,6 +352,12 @@ class AgentResponse:
             allowed_sources={ValueSource.ENGINE},
         )
         tool_results = tuple(self.tool_results)
+        notices = tuple(self.notices)
+        if any(not isinstance(notice, str) or not notice.strip() for notice in notices):
+            raise ValueError("notices는 비어 있지 않은 문자열이어야 합니다.")
+        policy_validation = _copy_object(self.policy_validation)
+        if policy_validation and policy_validation.get("status") not in {"PASS", "REJECTED"}:
+            raise ValueError("policy_validation.status는 PASS 또는 REJECTED여야 합니다.")
         if self.explanation is not None:
             _require_text(self.explanation, "explanation")
         if self.status is AgentResponseStatus.NEEDS_INPUT and self.missing_input is None:
@@ -365,6 +373,8 @@ class AgentResponse:
             raise ValueError("error 상태가 아닌 응답에는 AgentError를 넣을 수 없습니다.")
         object.__setattr__(self, "facts", facts)
         object.__setattr__(self, "fact_provenance", provenance)
+        object.__setattr__(self, "notices", notices)
+        object.__setattr__(self, "policy_validation", policy_validation)
         object.__setattr__(self, "tool_results", tool_results)
 
 
@@ -399,11 +409,16 @@ class LLMResponse:
     text: str | None = None
     tool_calls: tuple[ToolCall, ...] = ()
     missing_input: MissingInput | None = None
+    decision_claim: DecisionAction | None = None
 
     def __post_init__(self) -> None:
         calls = tuple(self.tool_calls)
         if self.text is not None and not isinstance(self.text, str):
             raise TypeError("text는 문자열 또는 None이어야 합니다.")
+        decision_claim = self.decision_claim
+        if decision_claim is not None and not isinstance(decision_claim, DecisionAction):
+            decision_claim = DecisionAction(decision_claim)
         if (self.text is None or not self.text.strip()) and not calls and self.missing_input is None:
             raise ValueError("LLMResponse에는 text, tool_calls 또는 missing_input이 필요합니다.")
         object.__setattr__(self, "tool_calls", calls)
+        object.__setattr__(self, "decision_claim", decision_claim)

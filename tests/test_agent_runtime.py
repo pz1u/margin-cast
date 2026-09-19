@@ -41,6 +41,11 @@ class AgentRuntimeTests(unittest.TestCase):
         raw_result = {
             "status": "ok",
             "request": {"menu_id": "M01"},
+            "recommended_action": {
+                "scenario_id": "price-test",
+                "action": "EXPERIMENT",
+                "reason": "테스트용 엔진 판단",
+            },
             "strategies": [
                 {
                     "name": "9,500원 가격 인상",
@@ -67,7 +72,11 @@ class AgentRuntimeTests(unittest.TestCase):
             result.tool_result.raw["strategies"][0]["profit_delta"]["mean"],
             135_791.25,
         )
-        self.assertEqual(result.final_response.text, "tool result received")
+        self.assertEqual(
+            result.final_response.text,
+            "합성 데이터 결과이며 근거 품질은 아직 미보정 상태입니다.",
+        )
+        self.assertEqual(result.final_response.decision_claim.value, "EXPERIMENT")
 
         first_messages, first_tools = provider.requests[0]
         self.assertEqual(first_messages[0].content, result.agent_input.text)

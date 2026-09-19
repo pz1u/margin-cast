@@ -63,9 +63,13 @@ capabilities 응답은 도구별 실행 기본값을 반환한다.
 - 성공확률과 분리된 미보정 근거 품질 `evidence_quality`
 - `RECOMMEND`·`EXPERIMENT`·`HOLD` 실행 판단
 - 기대 기여이익이 가장 높은 대안
+- 모든 전략과 `recommended_action`을 연결하는 ENGINE 생성 `scenario_id`
 
 `highest_expected_profit`은 기대값만 본 별도 지표다. 최종 순서는 기대이익·개선확률·80%
-하한·근거 품질을 함께 반영한 `decision_ranking`을 사용한다.
+하한·근거 품질을 함께 반영한 `decision_ranking`을 사용한다. Agent는 배열 위치·이름·가격으로
+추천 전략을 찾지 않고 `recommended_action.scenario_id`와 같은 ID의 전략만 선택한다.
+`scenario_id`는 ENGINE이 메뉴·정가·할인 입력으로 결정하며 표시 이름이나 배열 순서가 바뀌어도
+같은 사업 조건에는 같은 ID를 사용한다.
 
 모든 계산 결과는 `data_provenance`로 합성/실제 데이터 여부와 데이터 버전을 밝힌다. 현재는
 `SYNTHETIC_DATA_PROTOTYPE`이며 실제 매장 성과를 보증하지 않는다. `evidence_quality`는
@@ -164,8 +168,8 @@ Decision Engine의 데이터 출처, 근거 품질 산식과 검증 계획은
 4. 함수 호출을 `execute_tool`로 전달
 5. 도구 결과를 사용자가 이해할 수 있는 경영 언어로 설명
 
-A단계 Tool Contract와 B단계 가격 질문 한 건의 Mock LLM 세로 흐름까지 완료됐다. 다음 단계에서는
-보존된 ToolResult에 Response Policy를 적용하며, B단계 Runtime의 책임을 확대하지 않는다.
+A단계 Tool Contract, B단계 Mock 세로 흐름, C단계 가격 Response Policy까지 완료됐다. 다음
+단계에서는 Missing Input과 도구 오류를 다루며 기존 가격 정상 흐름의 책임을 확대하지 않는다.
 
 Agent 본체의 필수 회귀 사례는 [MarginCast Agent MVP 평가 시나리오](agent-evaluation.md)에
 정리했다.

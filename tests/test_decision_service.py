@@ -70,12 +70,78 @@ class DecisionServiceTests(unittest.TestCase):
         self.assertIn("downside_risk", result["strategies"][1])
         self.assertIn(result["recommended_action"]["action"], {"HOLD", "EXPERIMENT", "RECOMMEND"})
         self.assertEqual(result["decision_ranking"][0]["rank"], 1)
+        scenario_ids = [strategy["scenario_id"] for strategy in result["strategies"]]
+        self.assertEqual(len(scenario_ids), len(set(scenario_ids)))
+        self.assertIn(result["recommended_action"]["scenario_id"], scenario_ids)
+        self.assertEqual(
+            result["recommended_action"]["scenario_id"],
+            result["decision_ranking"][0]["scenario_id"],
+        )
 
     def test_same_request_is_reproducible(self):
         request = [{"name": "가격 인상", "list_price": 10000, "discount": 0}]
         first = self.service.compare_price_strategies("M01", request, simulations=500, seed=9)
         second = self.service.compare_price_strategies("M01", request, simulations=500, seed=9)
         self.assertEqual(first, second)
+
+    def test_scenario_ids_do_not_depend_on_array_order(self):
+        scenarios = [
+            {"name": "소폭 인상", "list_price": 9500, "discount": 0},
+            {"name": "대폭 인상", "list_price": 10000, "discount": 0},
+        ]
+        first = self.service.compare_price_strategies(
+            "M01", scenarios, simulations=500, seed=9
+        )
+        second = self.service.compare_price_strategies(
+            "M01", list(reversed(scenarios)), simulations=500, seed=9
+        )
+
+        first_ids = {
+            strategy["name"]: strategy["scenario_id"]
+            for strategy in first["strategies"]
+        }
+        second_ids = {
+            strategy["name"]: strategy["scenario_id"]
+            for strategy in second["strategies"]
+        }
+        self.assertEqual(first_ids, second_ids)
+
+    def test_scenario_id_does_not_depend_on_display_name(self):
+        first = self.service.compare_price_strategies(
+            "M01",
+            [{"name": "가격 인상", "list_price": 9500, "discount": 0}],
+            simulations=500,
+            seed=9,
+        )
+        second = self.service.compare_price_strategies(
+            "M01",
+            [{"name": "새 이름", "list_price": 9500, "discount": 0}],
+            simulations=500,
+            seed=9,
+        )
+        first_id = next(
+            strategy["scenario_id"]
+            for strategy in first["strategies"]
+            if not strategy["is_reference"]
+        )
+        second_id = next(
+            strategy["scenario_id"]
+            for strategy in second["strategies"]
+            if not strategy["is_reference"]
+        )
+        self.assertEqual(first_id, second_id)
+
+    def test_duplicate_price_terms_are_rejected(self):
+        with self.assertRaises(DecisionServiceError) as context:
+            self.service.compare_price_strategies(
+                "M01",
+                [
+                    {"name": "첫 이름", "list_price": 9500, "discount": 0},
+                    {"name": "둘째 이름", "list_price": 9500, "discount": 0},
+                ],
+                simulations=500,
+            )
+        self.assertEqual(context.exception.code, "INVALID_SCENARIO")
 
     def test_future_weather_changes_context_without_claiming_causality(self):
         last_date = pd.to_datetime(self.service._load_panel()["date"]).max()

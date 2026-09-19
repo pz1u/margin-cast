@@ -4,8 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from copy import deepcopy
+import json
 
-from .agent_schemas import JsonObject, LLMResponse, Message, MessageRole, ToolCall
+from .agent_schemas import (
+    DecisionAction,
+    JsonObject,
+    LLMResponse,
+    Message,
+    MessageRole,
+    ToolCall,
+)
 
 
 def _default_price_tool_call() -> ToolCall:
@@ -31,10 +39,16 @@ class MockLLMProvider:
     def __init__(
         self,
         tool_call: ToolCall | None = None,
-        final_text: str = "tool result received",
+        final_text: str = (
+            "합성 데이터 결과이며 근거 품질은 아직 미보정 상태입니다."
+        ),
+        decision_claim: DecisionAction | str | None = None,
     ) -> None:
         self.tool_call = tool_call or _default_price_tool_call()
         self.final_text = final_text
+        self.decision_claim = (
+            None if decision_claim is None else DecisionAction(decision_claim)
+        )
         self.requests: list[
             tuple[tuple[Message, ...], tuple[JsonObject, ...]]
         ] = []
@@ -55,5 +69,12 @@ class MockLLMProvider:
         if len(self.requests) == 2:
             if not messages or messages[-1].role is not MessageRole.TOOL:
                 raise RuntimeError("두 번째 Mock 호출에는 ToolResult 메시지가 필요합니다.")
-            return LLMResponse(text=self.final_text)
+            tool_result = json.loads(messages[-1].content)
+            decision_claim = self.decision_claim or DecisionAction(
+                tool_result["recommended_action"]["action"]
+            )
+            return LLMResponse(
+                text=self.final_text,
+                decision_claim=decision_claim,
+            )
         raise RuntimeError("MockLLMProvider는 한 실행에서 두 번만 호출할 수 있습니다.")

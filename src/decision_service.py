@@ -1,5 +1,7 @@
 """에이전트나 API가 계산 엔진을 안전하게 호출할 수 있는 서비스 경계."""
 
+import hashlib
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -47,6 +49,23 @@ DATA_PROVENANCE = {
         "현재 예측은 합성 POS 데이터에서 학습한 프로토타입 결과이며 실제 매장 성과를 보증하지 않는다."
     ),
 }
+
+
+def _price_scenario_id(menu_id, scenario):
+    """같은 가격 시나리오 입력에 같은 ENGINE 식별자를 부여한다."""
+    identity = {
+        "menu_id": menu_id,
+        "list_price": scenario["list_price"],
+        "discount": scenario["discount"],
+    }
+    canonical = json.dumps(
+        identity,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+    return f"price-{digest}"
 
 
 class DecisionServiceError(ValueError):
@@ -237,6 +256,7 @@ class MarginCastDecisionService:
                 f"scenarios는 1~{MAX_SCENARIOS}개의 배열이어야 합니다.",
             )
         names = set()
+        price_terms = set()
         for position, scenario in enumerate(scenarios):
             if not isinstance(scenario, dict):
                 raise DecisionServiceError(
@@ -269,6 +289,14 @@ class MarginCastDecisionService:
                     "정가는 1,000~100,000원, 할인액은 0 이상 정가 미만이어야 합니다.",
                     {"index": position},
                 )
+            price_term = (price, discount)
+            if price_term in price_terms:
+                raise DecisionServiceError(
+                    "INVALID_SCENARIO",
+                    "같은 정가와 할인액의 시나리오는 중복될 수 없습니다.",
+                    {"index": position},
+                )
+            price_terms.add(price_term)
 
     def compare_price_strategies(
         self,
@@ -316,6 +344,8 @@ class MarginCastDecisionService:
             raise DecisionServiceError(
                 "INVALID_SCENARIOS", "현재 가격과 비교할 대안을 하나 이상 입력해야 합니다."
             )
+        for scenario in normalized:
+            scenario["scenario_id"] = _price_scenario_id(menu_id, scenario)
 
         results = simulate_scenarios(
             reference,
@@ -326,6 +356,7 @@ class MarginCastDecisionService:
             seed=seed,
         )
         for scenario, result in zip(normalized, results):
+            result["scenario_id"] = scenario["scenario_id"]
             result["evidence_quality"] = (
                 None
                 if result["is_reference"]
@@ -367,6 +398,7 @@ class MarginCastDecisionService:
             },
             "strategies": results,
             "highest_expected_profit": {
+                "scenario_id": recommended["scenario_id"],
                 "name": recommended["name"],
                 "expected_contribution_profit": recommended["contribution_profit"]["mean"],
                 "success_probability": recommended["success_probability"],
@@ -376,12 +408,14 @@ class MarginCastDecisionService:
             "decision_ranking": [
                 {
                     "rank": index,
+                    "scenario_id": row["scenario_id"],
                     "name": row["name"],
                     **row["decision"],
                 }
                 for index, row in enumerate(ranked, start=1)
             ],
             "recommended_action": {
+                "scenario_id": ranked[0]["scenario_id"],
                 "name": ranked[0]["name"],
                 "action": ranked[0]["decision"]["action"],
                 "reason": ranked[0]["decision"]["reason"],

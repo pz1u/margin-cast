@@ -2,7 +2,7 @@
 
 ## 1. 문서 상태
 
-- 상태: B단계 최소 Mock Runtime 구현 완료
+- 상태: C단계 최소 Response Policy 구현 완료
 - 대상: MarginCast Agent v1
 - 구현 주도: 사용자
 - 지원: Codex가 계산 도구 연결, 코드 리뷰, 디버깅과 평가를 지원
@@ -227,36 +227,40 @@ Agent가 제안하는 가격·할인액·기간·대상 매장·대상 메뉴는
 
 ## 9. 응답 계약
 
-Agent Runtime은 먼저 다음 구조의 `AgentResponse`를 만든다.
+Response Policy는 검증을 통과한 경우에만 다음 구조의 `AgentResponse`를 만든다.
 
 ```text
-recommendation_id
 facts
-  selected_scenario_id
-  execution_inputs
-    horizon_days: {value, source}
-    simulations: {value, source}
-    seed: {value, source}
-  expected_units
+  selected_scenario_id       # {value, source=ENGINE, source_ref}
+  expected_units             # 각 항목은 value, source, source_ref 포함
   expected_contribution_profit
   profit_delta
   interval_80
   success_probability
+  downside_risk
   evidence_quality
   engine_decision
-presentation
-  presented_decision
-  explanation
-  next_action
+decision                     # PASS일 때 ENGINE 판단을 표시
+explanation                  # 숫자 없는 LLM 정성 설명
 notices
 policy_validation
   status              # PASS | REJECTED
   violations
+  engine_decision
+  llm_decision_claim
+  presented_decision
 ```
 
-UI는 `facts`의 핵심 수치와 Decision을 직접 표시한다. `presentation.explanation`에서 숫자를
+UI는 `facts`의 핵심 수치와 Decision을 직접 표시한다. `explanation`에서 숫자를
 다시 추출해 카드나 차트를 만들지 않는다. `presented_decision`은 `engine_decision`과 같아야 하며,
 다르면 Response Policy가 응답을 거부한다.
+
+C단계 가격 흐름에서 `expected_units`와 `expected_contribution_profit`은 선택 전략 분포의 평균이고,
+`profit_delta`는 현재 가격 대비 평균 차이다. `interval_80`은 같은 `profit_delta`의 p10~p90이다.
+
+Response Policy는 PASS일 때만 `AgentResponse`를 반환한다. REJECTED이면 위반 코드만 가진
+`ResponsePolicyOutcome`을 반환하고 사용자용 `AgentResponse`는 만들지 않는다. ToolResult 원본은
+계속 `AgentRunResult`에 보존한다.
 
 최종 응답은 가능한 경우 다음 순서를 사용한다.
 
@@ -402,10 +406,12 @@ src/
 ├── llm_provider.py        # 공급자 독립 Protocol
 ├── agent_runtime.py       # B단계 단일 Tool Call 실행
 ├── mock_llm_provider.py   # B단계 두 응답 Mock
+├── response_policy.py     # C단계 ENGINE facts와 Decision 검증
 └── agent_tool_contracts.py # TOOL_SCHEMAS와 execute_tool
 
 tests/
-└── test_agent_runtime.py
+├── test_agent_runtime.py
+└── test_response_policy.py
 ```
 
 B단계는 위 파일만으로 가격 Tool Call 한 번과 후속 Provider 응답까지 실행한다. 대화 상태,
@@ -420,7 +426,7 @@ A단계를 확장 설계 단계로 사용하지 않는다. Mock Runtime 한 건�
 |---|---|---|
 | A | Tool 계약 최소 보강 | `execution_defaults`, 위치 입력 3형식, Bundle 숫자 출처, 날씨 해석 계약 확정 — 완료 |
 | B | Mock LLM Agent Runtime | 가격 질문 한 건이 Mock Provider → Tool Call → ToolResult까지 완료 — 완료 |
-| C | ToolResult → AgentResponse 정책 | 핵심 사실 고정, Decision 일치, 필수 고지 검증 후 PASS |
+| C | ToolResult → AgentResponse 정책 | 핵심 사실 고정, Decision 일치, 필수 고지 검증 후 PASS — 완료 |
 | D | 오류·Missing Input | 출처 없는 숫자를 만들지 않고 질문 또는 구조화된 오류 반환 |
 | E | 실제 LLM Provider | Mock과 같은 Provider Interface로 실제 모델 한 개 연결 |
 | F | Feedback·Audit | 추천 ID, 구조화된 판단, 실험 계획과 실제 결과 연결 상태 보존 |
