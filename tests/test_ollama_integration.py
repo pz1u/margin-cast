@@ -1,5 +1,6 @@
 import os
 from functools import partial
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -61,7 +62,7 @@ class OllamaIntegrationTests(unittest.TestCase):
                 },
             )
             runtime = AgentRuntime(
-                OllamaProvider(),
+                OllamaProvider(timeout_seconds=600),
                 tool_executor=partial(execute_tool, service=service),
             )
 
@@ -71,6 +72,24 @@ class OllamaIntegrationTests(unittest.TestCase):
                 execution_defaults=get_execution_defaults(),
             ).route(run_result)
 
+            print(
+                "\nOLLAMA_SMOKE_RESULT="
+                + json.dumps(
+                    {
+                        "model": os.environ["OLLAMA_MODEL"],
+                        "user_input": agent_input.text,
+                        "tool_name": run_result.tool_call.name,
+                        "tool_arguments": run_result.tool_call.arguments,
+                        "tool_result_status": run_result.tool_result.raw["status"],
+                        "decision_claim": run_result.final_response.decision_claim.value,
+                        "policy_status": outcome.policy_validation["status"],
+                        "policy_violations": outcome.policy_validation["violations"],
+                        "explanation": run_result.final_response.text,
+                        "next_action": run_result.final_response.next_action,
+                    },
+                    ensure_ascii=True,
+                )
+            )
             self.assertEqual(
                 run_result.tool_call.name,
                 "compare_price_strategies",
@@ -78,6 +97,10 @@ class OllamaIntegrationTests(unittest.TestCase):
             self.assertEqual(run_result.tool_result.raw["status"], "ok")
             self.assertEqual(outcome.policy_validation["status"], "PASS")
             self.assertIsNotNone(outcome.agent_response)
+            self.assertEqual(
+                outcome.agent_response.presentation.next_action,
+                run_result.final_response.next_action,
+            )
 
 
 if __name__ == "__main__":

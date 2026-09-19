@@ -261,6 +261,51 @@ class PriceResponsePolicyTests(unittest.TestCase):
         )
         self.assertIsNone(outcome.agent_response)
 
+    def test_next_action_is_exposed_only_after_policy_passes(self):
+        run_result = self.run_agent()
+        engine_action = DecisionAction(
+            run_result.tool_result.raw["recommended_action"]["action"]
+        )
+        changed = replace(
+            run_result,
+            final_response=LLMResponse(
+                text="근거 품질은 아직 미보정 상태입니다.",
+                decision_claim=engine_action,
+                next_action="작은 범위의 검증을 준비해주세요.",
+            ),
+        )
+
+        outcome = self.policy.evaluate(changed)
+
+        self.assertEqual(outcome.policy_validation["status"], "PASS")
+        self.assertEqual(
+            outcome.agent_response.presentation.next_action,
+            "작은 범위의 검증을 준비해주세요.",
+        )
+
+    def test_numeric_next_action_is_rejected(self):
+        run_result = self.run_agent()
+        engine_action = DecisionAction(
+            run_result.tool_result.raw["recommended_action"]["action"]
+        )
+        changed = replace(
+            run_result,
+            final_response=LLMResponse(
+                text="근거 품질은 아직 미보정 상태입니다.",
+                decision_claim=engine_action,
+                next_action="7일 실험을 준비해주세요.",
+            ),
+        )
+
+        outcome = self.policy.evaluate(changed)
+
+        self.assertEqual(outcome.policy_validation["status"], "REJECTED")
+        self.assertIn(
+            "LLM_NEXT_ACTION_CONTAINS_NUMBER",
+            outcome.policy_validation["violations"],
+        )
+        self.assertIsNone(outcome.agent_response)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,6 +11,8 @@ from jsonschema import Draft202012Validator
 
 from .agent_schemas import (
     AgentInput,
+    AgentResponse,
+    AgentResponseStatus,
     JsonObject,
     LLMResponse,
     Message,
@@ -49,6 +51,10 @@ class AgentMissingInputError(AgentRuntimeError):
     def __init__(self, missing_input: MissingInput) -> None:
         super().__init__(missing_input.question)
         self.missing_input = missing_input
+        self.agent_response = AgentResponse(
+            status=AgentResponseStatus.NEEDS_INPUT,
+            missing_input=missing_input,
+        )
 
 
 @dataclass(frozen=True)

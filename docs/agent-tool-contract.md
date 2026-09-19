@@ -127,9 +127,18 @@ E단계의 `OllamaProvider`도 같은 `LLMProvider.generate(messages, tools) -> 
 - `explanation`: 숫자를 새로 만들지 않는 정성 설명
 - `next_action`: 숫자를 새로 만들지 않는 정성적 다음 행동
 
+`next_action`은 Response Policy가 Decision과 숫자 정책을 검증해 `PASS`한 경우에만
+`AgentResponse.presentation.next_action`으로 전달한다. Ollama 요청은 계산이나 재판단이 필요 없는
+이 흐름에서 `think=false`를 사용한다.
+
 사용자 확인값은 공통 `Message.context`의 Conversation State로 Provider에 전달한다. 모델이 필수
 Tool 인자를 빠뜨렸을 때 해당 값이 State에 있으면 `PROVIDER_INVALID_TOOL_CALL`이고, State에도
 없으면 사용자에게 묻는 `MissingInput`이다. 자동 재시도는 하지 않는다.
+
+현재 Runtime은 Tool 호출 전 부족 입력을 `AgentMissingInputError`로 중단하지만, 예외에는 동일한
+`MissingInput`을 담은 `AgentResponse(status=NEEDS_INPUT)`도 함께 제공한다. 향후 Web 경계는 이
+구조화 응답을 정상 대화 상태로 변환할 수 있다. Runtime 반환 타입 전체를 성공·부족 입력 union으로
+바꾸는 작업은 Web 연결 전 리팩터링 후보로 남긴다.
 
 ## 로컬 사전 검증
 
@@ -174,10 +183,14 @@ Tool 인자를 빠뜨렸을 때 해당 값이 State에 있으면 `PROVIDER_INVAL
 10. `menu_specific_causal_effect_validated=false`이면 특정 날씨가 판매량 증가·감소를 일으킨다고 단정하지 않는다.
 11. 미지원 메뉴에는 오류 세부정보의 `next_step`을 사용해 데이터 확보 경로를 안내한다.
 
-현재 설명문 안의 아라비아 숫자 탐지는 C/D단계 Mock 방어선으로 유지한다. E단계의 핵심 경계는
+현재 설명문 안의 숫자 문자 탐지는 C/D단계 Mock 방어선으로 유지한다. E단계의 핵심 경계는
 ToolResult에서 고정한 facts, 구조화된 Ollama 최종 응답, Response Policy다. 한국어 숫자 파서는
 추가하지 않는다. facts의 `source_ref`와 `fact_provenance.ref`는 현재 둘 다 유지하며 Response
 Policy가 일치 여부를 검사한다.
+
+E.1 실제 smoke에서는 `qwen3:4b`가 가격 Tool Call, 실제 계산, 구조화 응답과 Response Policy를
+끝까지 통과했다. CPU 전용 환경에서 한 실행에 약 137초가 걸렸다. `llama3.2`는 계약 외 Tool 인자,
+`qwen3:8b`는 최종 응답 timeout이 관찰되어 현재 로컬 검증 모델은 `qwen3:4b`로 둔다.
 
 실제 로컬 서버 테스트는 기본 회귀 테스트에서 제외한다. Ollama 서버와 Tool Calling 지원 모델을
 준비한 뒤 다음처럼 명시적으로 실행한다.

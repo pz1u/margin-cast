@@ -337,6 +337,17 @@ class Evidence:
 
 
 @dataclass(frozen=True)
+class AgentPresentation:
+    """정책 검증을 통과한 정성적 UI 표현."""
+
+    next_action: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.next_action is not None:
+            _require_text(self.next_action, "next_action")
+
+
+@dataclass(frozen=True)
 class AgentResponse:
     """UI용 원본 사실과 LLM 설명을 분리한 Agent 반환값."""
 
@@ -346,6 +357,7 @@ class AgentResponse:
     decision: Decision | None = None
     evidence: Evidence | None = None
     explanation: str | None = None
+    presentation: AgentPresentation = field(default_factory=AgentPresentation)
     explanation_source: ValueSource = field(default=ValueSource.LLM, init=False)
     notices: tuple[str, ...] = ()
     policy_validation: JsonObject = field(default_factory=dict)
@@ -372,6 +384,8 @@ class AgentResponse:
             raise ValueError("policy_validation.status는 PASS 또는 REJECTED여야 합니다.")
         if self.explanation is not None:
             _require_text(self.explanation, "explanation")
+        if not isinstance(self.presentation, AgentPresentation):
+            raise TypeError("presentation은 AgentPresentation이어야 합니다.")
         if self.status is AgentResponseStatus.NEEDS_INPUT and self.missing_input is None:
             raise ValueError("needs_input 응답에는 missing_input이 필요합니다.")
         if self.status is AgentResponseStatus.COMPLETED and self.missing_input is not None:

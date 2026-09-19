@@ -8,6 +8,7 @@ import re
 
 from .agent_runtime import AgentRunResult
 from .agent_schemas import (
+    AgentPresentation,
     AgentResponse,
     AgentResponseStatus,
     Decision,
@@ -237,10 +238,15 @@ class PriceResponsePolicy:
                 notices.insert(0, warning)
 
         explanation = (final_response.text or "") if final_response is not None else ""
+        next_action = (
+            final_response.next_action if final_response is not None else None
+        )
         if final_response is None:
             violations.append("LLM_FINAL_RESPONSE_MISSING")
         if re.search(r"\d", explanation):
             violations.append("LLM_EXPLANATION_CONTAINS_NUMBER")
+        if next_action is not None and re.search(r"\d", next_action):
+            violations.append("LLM_NEXT_ACTION_CONTAINS_NUMBER")
 
         if any(
             fact.get("source") != ValueSource.ENGINE.value
@@ -280,6 +286,7 @@ class PriceResponsePolicy:
                 source_ref=f"{call_id}:recommended_action",
             ),
             explanation=explanation,
+            presentation=AgentPresentation(next_action=next_action),
             notices=tuple(notices),
             policy_validation=validation,
         )

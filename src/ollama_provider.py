@@ -23,10 +23,14 @@ from .agent_schemas import (
 OLLAMA_SYSTEM_PROMPT = """당신은 MarginCast의 경영 의사결정 Agent입니다.
 예상 판매량, 기대 기여이익, 가격탄력성, 개선확률, 신뢰구간, 신뢰도와 위험도를 직접 계산하거나 생성하지 마세요.
 계산이 필요한 질문은 제공된 MarginCast Tool을 호출하고, 구조화된 Conversation State에 있는 사용자 확인값을 Tool 인자에 사용하세요.
+Tool 인자에는 해당 Tool의 parameters에 정의된 필드만 사용하고 설명이나 추가 필드를 넣지 마세요.
+값이 없는 선택 Tool 인자는 null로 보내지 말고 생략하세요.
 ToolResult의 Decision은 변경하거나 재판단하지 말고 decision_claim에 그대로 사용하세요.
+최종 JSON은 decision_claim, explanation, next_action 세 필드만 포함하세요.
 성공확률과 근거 품질은 서로 다른 개념으로 다루세요.
 합성 데이터 provenance가 있으면 합성 데이터라는 고지를 생략하지 마세요.
 최종 explanation과 next_action에는 판매량, 이익, 확률, 가격, 기간 등의 숫자를 새로 만들지 말고 정성적으로만 설명하세요.
+최종 응답에는 문자 체계와 관계없이 숫자나 수사를 쓰지 말고 수량, 금액, 비율, 기간을 표현하지 마세요.
 실행 기본값과 계산 공식은 추측하지 마세요.
 """
 
@@ -38,8 +42,16 @@ FINAL_RESPONSE_SCHEMA = {
             "type": "string",
             "enum": [action.value for action in DecisionAction],
         },
-        "explanation": {"type": "string", "minLength": 1},
-        "next_action": {"type": "string", "minLength": 1},
+        "explanation": {
+            "type": "string",
+            "minLength": 1,
+            "description": "숫자, 금액, 비율, 기간을 쓰지 않는 정성적 설명",
+        },
+        "next_action": {
+            "type": "string",
+            "minLength": 1,
+            "description": "숫자, 가격, 기간을 쓰지 않는 정성적 다음 행동",
+        },
     },
     "required": ["decision_claim", "explanation", "next_action"],
     "additionalProperties": False,
@@ -187,6 +199,7 @@ class OllamaProvider:
             "messages": _ollama_messages(messages),
             "tools": ollama_tools,
             "stream": False,
+            "think": False,
         }
         is_final_request = bool(messages) and messages[-1].role is MessageRole.TOOL
         if is_final_request:
@@ -265,6 +278,10 @@ class OllamaProvider:
             raise OllamaProviderError(
                 "OLLAMA_RESPONSE_INVALID",
                 "Ollama 최종 응답 필드가 공통 계약과 다릅니다.",
+                {
+                    "expected_fields": sorted(required),
+                    "actual_fields": sorted(final) if isinstance(final, dict) else None,
+                },
             )
         explanation = final["explanation"]
         next_action = final["next_action"]

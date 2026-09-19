@@ -134,6 +134,7 @@ class OllamaProviderTests(unittest.TestCase):
         payload = client.requests[0]["json"]
         self.assertEqual(payload["model"], "test-tool-model")
         self.assertFalse(payload["stream"])
+        self.assertIs(payload["think"], False)
         self.assertNotIn("format", payload)
         system_prompt = payload["messages"][0]["content"]
         self.assertIn("계산하거나 생성하지 마세요", system_prompt)
@@ -177,6 +178,28 @@ class OllamaProviderTests(unittest.TestCase):
         self.assertEqual(
             client.requests[0]["json"]["format"]["required"],
             ["decision_claim", "explanation", "next_action"],
+        )
+        self.assertIn(
+            "숫자",
+            client.requests[0]["json"]["format"]["properties"]["next_action"][
+                "description"
+            ],
+        )
+        self.assertIn(
+            "parameters에 정의된 필드만 사용",
+            client.requests[0]["json"]["messages"][0]["content"],
+        )
+        self.assertIn(
+            "null로 보내지 말고 생략",
+            client.requests[0]["json"]["messages"][0]["content"],
+        )
+        self.assertIn(
+            "문자 체계와 관계없이 숫자나 수사",
+            client.requests[0]["json"]["messages"][0]["content"],
+        )
+        self.assertIn(
+            "세 필드만 포함",
+            client.requests[0]["json"]["messages"][0]["content"],
         )
 
     def test_unknown_tool_name_is_rejected(self):
@@ -254,6 +277,10 @@ class OllamaProviderTests(unittest.TestCase):
 
         self.assertEqual(context.exception.code, "MISSING_INPUT")
         self.assertEqual(context.exception.missing_input.fields, ("scenarios",))
+        self.assertEqual(
+            context.exception.agent_response.missing_input,
+            context.exception.missing_input,
+        )
         self.assertEqual(
             context.exception.missing_input.source_requirement,
             (ValueSource.USER,),
