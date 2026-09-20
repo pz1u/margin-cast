@@ -65,6 +65,8 @@ $env:OLLAMA_MODEL="qwen3:1.7b"
 브라우저에서 `http://127.0.0.1:8000`에 접속한다. 실제 데모 전에 가격 질문을 한 번 보내 모델을
 warm 상태로 준비한다. 서버 startup에서는 모델이나 사업 Tool을 자동 호출하지 않는다.
 
+OpenAI 배포 설정과 Provider 선택은 [LLM Provider와 배포 준비](providers-and-deployment.md)를
+참고한다. 두 Provider 모두 같은 HTTP 응답과 화면을 사용한다.
 ## AI 상담 화면 흐름
 
 1. 메뉴와 변경 가격을 자연어로 입력한다.

@@ -4,6 +4,7 @@ import argparse
 from functools import partial
 import json
 import mimetypes
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -18,7 +19,7 @@ from src.evidence_quality import (
 )
 from src.experiment_feedback import ExperimentFeedbackError, ExperimentFeedbackStore
 from src.forecast_decision_service import ForecastDecisionError, ForecastDecisionService
-from src.ollama_provider import OllamaProvider
+from src.llm_provider_factory import create_llm_provider
 from src.store_profile import StoreProfileError, StoreProfileService
 
 
@@ -217,7 +218,7 @@ def dispatch_api(
                 },
             }
 
-    if path == "/api/health":
+    if path in {"/api/health", "/health"}:
         if method != "GET":
             payload = error_result("METHOD_NOT_ALLOWED", "GET 요청만 지원합니다.")
             return api_status(payload), payload
@@ -427,7 +428,7 @@ def _handler_class(
 
         def do_GET(self):
             path = urlsplit(self.path).path
-            if path.startswith("/api/"):
+            if path == "/health" or path.startswith("/api/"):
                 self._send_api("GET", path)
             else:
                 self._send_static(path)
@@ -465,16 +466,27 @@ def create_server(
     store_profile=None,
 ):
     root = Path(__file__).resolve().parents[1]
+    configured_state_dir = os.getenv("MARGINCAST_STATE_DIR")
+    state_dir = (
+        Path(configured_state_dir)
+        if configured_state_dir and configured_state_dir.strip()
+        else root / "data"
+    )
     service = service or MarginCastDecisionService()
     if store_profile is None and isinstance(service, MarginCastDecisionService):
-        store_profile = StoreProfileService(service)
+        store_profile = StoreProfileService(
+            service,
+            store_path=state_dir / "store" / "store_profile.json",
+        )
     if store_profile is not None and isinstance(service, MarginCastDecisionService):
         # 사용자가 수정한 식재료 원가를 웹 화면과 Agent가 같은 계산 경로에서 사용한다.
         service.set_cost_overrides_provider(store_profile.user_cost_overrides)
     forecast_service = ForecastDecisionService(service)
-    feedback_store = feedback_store or ExperimentFeedbackStore()
+    feedback_store = feedback_store or ExperimentFeedbackStore(
+        state_dir / "feedback" / "experiment_feedback.json"
+    )
     agent_chat_service = agent_chat_service or AgentChatService(
-        provider_factory=OllamaProvider,
+        provider_factory=create_llm_provider,
         tool_executor=partial(
             execute_tool,
             service=service,
@@ -486,7 +498,7 @@ def create_server(
             {},
             service=service,
         ),
-        audit_store=AgentAuditStore(),
+        audit_store=AgentAuditStore(state_dir / "audit" / "agent_audit.json"),
     )
     static_dir = static_dir or root / "web"
     return HTTPServer(
@@ -502,10 +514,21 @@ def create_server(
     )
 
 
+def _environment_port() -> int:
+    raw = os.getenv("PORT", "8000")
+    try:
+        port = int(raw)
+    except ValueError as error:
+        raise ValueError("PORT는 정수여야 합니다.") from error
+    if not 1 <= port <= 65535:
+        raise ValueError("PORT는 1부터 65535 사이여야 합니다.")
+    return port
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--host", default=os.getenv("HOST", "127.0.0.1"))
+    parser.add_argument("--port", type=int, default=_environment_port())
     args = parser.parse_args()
 
     server = create_server(args.host, args.port)

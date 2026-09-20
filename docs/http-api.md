@@ -23,7 +23,7 @@ HTTP 서버로 제공한다. Agent도 계산 구현을 직접 호출하지 않�
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
-| `GET` | `/api/health` | 서버 버전, 실행 상태와 로딩된 근거 품질 버전·지문 |
+| `GET` | `/health`, `/api/health` | 서버 버전, 실행 상태와 로딩된 근거 품질 버전·지문 |
 | `POST` | `/api/agent/chat` | 가격 질문 한 건 또는 동일 세션의 부족 입력 후속 대화 |
 | `GET` | `/api/capabilities` | 지원 메뉴, 데이터 범위, 입력 한도 |
 | `POST` | `/api/strategies/price` | 가격·할인 전략 비교 |
@@ -82,6 +82,11 @@ POS 메뉴의 상태는 엔진 capabilities에서 가져와 `ANALYZABLE` 또는
 도메인 검증 실패도 JSON 오류 객체로 반환한다. 잘못된 입력은 `400`, 없는 경로는 `404`,
 분석 패널이 준비되지 않은 경우는 `503`을 사용한다. 요청 본문은 64KiB로 제한한다.
 
+## Provider 선택과 배포 실행
+
+Agent Provider는 LLM_PROVIDER=ollama|openai로 선택한다. OpenAI Responses API 설정,
+HOST/PORT, 쓰기 가능한 상태 경로와 benchmark 절차는
+[LLM Provider와 배포 준비](providers-and-deployment.md)에 정리했다.
 ## 배포 전 남은 항목
 
 현재 서버 기본값은 로컬 접근만 허용한다. 공개 배포에서는 앞단 프록시의 TLS, 요청 제한,
