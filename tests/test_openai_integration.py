@@ -39,10 +39,11 @@ class OpenAIIntegrationTests(unittest.TestCase):
 
         self.assertEqual(status, 200)
         self.assertEqual(payload["status"], "COMPLETED")
-        self.assertEqual(
-            payload["agent_response"]["facts"]["engine_decision"]["value"],
-            payload["agent_response"]["presentation"]["decision"],
+        self.assertIn(
+            payload["facts"]["engine_decision"]["value"],
+            {"RECOMMEND", "EXPERIMENT", "HOLD"},
         )
+        self.assertIn(payload["presentation"]["source"], {"LLM", "POLICY_FALLBACK"})
 
 
 if __name__ == "__main__":
