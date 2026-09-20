@@ -19,6 +19,11 @@ function completed(sessionId = "session-1") {
       engine_decision: { value: "EXPERIMENT", source: "ENGINE" },
       profit_delta: { value: 135000, source: "ENGINE" },
       success_probability: { value: 0.82, source: "ENGINE" },
+      forecast_used: { value: true, source: "ENGINE" },
+      forecast_applied_dates: {
+        value: { from: "2026-09-21", to: "2026-09-24" },
+        source: "ENGINE",
+      },
     },
     presentation: {
       explanation: "설명에 999라는 다른 값이 있어도 카드 값으로 사용하지 않습니다.",
@@ -70,11 +75,53 @@ test("COMPLETED는 facts와 presentation을 분리하고 notices를 보존한다
   const message = controller.getState().messages[1];
   assert.deepEqual(message.facts, response.facts);
   assert.equal(message.facts.profit_delta.value, 135000);
+  assert.deepEqual(message.facts.forecast_applied_dates.value, {
+    from: "2026-09-21",
+    to: "2026-09-24",
+  });
   assert.equal(message.explanation, response.presentation.explanation);
   assert.equal(message.presentationSource, "POLICY_FALLBACK");
   assert.notEqual(message.explanation, String(message.facts.profit_delta.value));
   assert.deepEqual(message.notices, response.notices);
   assert.equal(message.recommendationId, "recommendation-1");
+});
+
+test("위치 선택은 같은 session으로 전달하고 정확한 위치를 화면 상태에 보존하지 않는다", async () => {
+  const calls = [];
+  const controller = createChatController({
+    request: async (body) => {
+      calls.push(body);
+      if (calls.length === 1) {
+        return {
+          session_id: "weather-session",
+          status: "NEEDS_INPUT",
+          execution_id: "execution-location",
+          question: "날씨를 확인할 매장 위치를 선택해주세요.",
+          missing_input: {
+            input_type: "location",
+            options: [
+              { value: "current_location", label: "현재 위치 사용" },
+              { value: "address_search", label: "매장 위치 검색" },
+            ],
+          },
+        };
+      }
+      return completed("weather-session");
+    },
+  });
+
+  await controller.send("우리 매장 기준 다음 4일 동안 치킨마요 9,500원은 어때?");
+  await controller.sendLocation(
+    { source: "browser_geolocation", latitude: 37.5665, longitude: 126.978 },
+    "현재 위치를 사용합니다.",
+  );
+
+  assert.equal(calls[1].session_id, "weather-session");
+  assert.equal(calls[1].location.source, "browser_geolocation");
+  assert.equal(calls[1].location.latitude, 37.5665);
+  const stateText = JSON.stringify(controller.getState());
+  assert.doesNotMatch(stateText, /37\.5665|126\.978|latitude|longitude/);
+  assert.equal(controller.getState().messages[1].inputType, "location");
 });
 
 test("REJECTED는 내부 위반을 숨기고 사용자가 눌렀을 때만 재시도한다", async () => {

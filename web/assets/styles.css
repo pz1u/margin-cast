@@ -142,6 +142,15 @@ h1 { margin: 0; max-width: 510px; font-size: clamp(38px, 4.6vw, 64px); line-heig
 .retry-button { margin: 13px 0 0 13px; padding: 9px 13px; border: 1px solid var(--ink); color: var(--ink); background: transparent; font-size: 11px; font-weight: 750; }
 .retry-button:hover { background: var(--ink); color: var(--panel); }
 
+.location-actions { margin: 14px 0 0 13px; display: flex; flex-wrap: wrap; gap: 8px; }
+.location-action-button, .location-submit { padding: 10px 13px; border: 1px solid var(--ink); color: var(--ink); background: var(--panel); font-size: 11px; font-weight: 750; }
+.location-action-button:hover, .location-submit:hover { background: var(--signal); }
+.location-action-button:disabled { cursor: wait; opacity: 0.5; }
+.location-search-form { width: 100%; margin-top: 4px; display: grid; grid-template-columns: 1fr auto; gap: 7px; }
+.location-search-form[hidden] { display: none; }
+.location-search-input { min-width: 0; padding: 10px 11px; border: 1px solid var(--ink); border-radius: 0; color: var(--ink); background: var(--panel); font: inherit; font-size: 12px; }
+.location-status { width: 100%; margin: 1px 0 0; color: var(--muted); font-size: 10px; }
+
 .message-loading { min-width: 250px; }
 .loading-topline { display: flex; align-items: center; gap: 12px; }
 .loading-topline .message-author { margin: 0; }
@@ -162,6 +171,10 @@ h1 { margin: 0; max-width: 510px; font-size: clamp(38px, 4.6vw, 64px); line-heig
 .decision-badge.is-experiment { color: #765019; background: #f7e0af; }
 .decision-badge.is-hold { color: #843e2d; background: #f2d5cd; }
 .decision-badge.is-neutral { color: var(--muted); }
+
+.weather-context { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--ink); background: #dcebf0; }
+.weather-context-label { color: var(--blue); font-size: 10px; font-weight: 800; letter-spacing: 0.05em; }
+.weather-context-dates { font: 750 12px/1.3 ui-monospace, monospace; }
 
 .primary-result { padding: 22px 18px 20px; background: var(--signal); }
 .metric-label { display: block; color: var(--muted); font-size: 10px; font-weight: 750; }
@@ -229,6 +242,8 @@ footer p { margin: 0; text-align: right; }
   .message { max-width: 96%; }
   .message-user { max-width: 88%; }
   .decision-card { width: calc(100vw - 60px); }
+  .weather-context { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .location-search-form { grid-template-columns: 1fr; }
   .result-metrics { grid-template-columns: 1fr; }
   .result-metric { border-right: 0; }
   .primary-value { font-size: 35px; }

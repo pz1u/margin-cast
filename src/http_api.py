@@ -174,7 +174,7 @@ def dispatch_api(
         arguments = _decode_json(body)
         if isinstance(arguments, dict) and arguments.get("status") == "error":
             return api_status(arguments), arguments
-        allowed = {"session_id", "message"}
+        allowed = {"session_id", "message", "location"}
         unknown = sorted(set(arguments) - allowed)
         if unknown or "message" not in arguments:
             payload = error_result(
@@ -203,6 +203,7 @@ def dispatch_api(
             return agent_chat_service.chat(
                 arguments.get("session_id"),
                 arguments["message"],
+                arguments.get("location"),
             )
         except AgentChatRequestError as error:
             return 400, {

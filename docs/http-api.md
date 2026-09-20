@@ -106,6 +106,22 @@ POS 메뉴의 상태는 엔진 capabilities에서 가져와 `ANALYZABLE` 또는
 Policy를 통과하면 `COMPLETED`이며, UI 핵심 수치는 LLM 문장이 아닌 `facts`에서 읽는다.
 전체 ToolResult와 System Prompt는 반환하지 않는다.
 
+실제 예보 대화에서 위치가 없으면 `NEEDS_INPUT`의 `missing_input.input_type=location`과
+`current_location`, `address_search` 선택지를 반환한다. 후속 요청은 같은 `session_id`와 함께
+다음 중 하나의 `location`을 보낼 수 있다.
+
+```json
+{"source":"browser_geolocation","latitude":37.5665,"longitude":126.978}
+```
+
+```json
+{"source":"address_search","address_query":"매장 도로명 또는 지번 주소"}
+```
+
+서버는 이를 즉시 KMA 격자로 변환하고 주소·정확 좌표를 응답, 세션, 감사 로그에 보존하지 않는다.
+Forecast 완료 응답은 `forecast_used`, `forecast_applied_dates`,
+`weather_causal_effect_validated`를 ENGINE facts로 제공한다. KMA 격자는 기본 UI에 노출하지 않는다.
+
 ENGINE 결과가 정상이고 LLM presentation만 숫자 정책을 위반한 경우에는 Response Policy가
 정적 설명으로 교체한 뒤 `COMPLETED`를 반환한다. 이때 `presentation.source`는
 `POLICY_FALLBACK`이며 정상 LLM 설명은 `LLM`이다. UI는 이 값을 일반 사용자에게 표시하지 않고

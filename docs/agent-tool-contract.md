@@ -106,6 +106,17 @@ Agent용 도구는 `location` 객체로 다음 세 위치 입력 형식 중 정�
 확인한 뒤 폐기하며 도구 결과, Agent 세션, 감사 로그에 남기지 않는다. 도구 결과에는 위치 입력
 종류와 기상청 격자만 포함하고 정확한 위도·경도도 반환하지 않는다.
 
+H1 Web Agent는 주소 원문이나 브라우저 위경도를 LLM에 전달하지 않는다. HTTP 경계에서 기존 위치
+변환 계약으로 KMA 격자를 만든 뒤 세션에는 `source`, `kma_nx`, `kma_ny`, `resolved_at`,
+`expires_at`만 저장한다. 유효한 격자는 같은 세션에서 재사용한다. Agent Runtime에는 정규화된
+KMA 격자만 전달하며, Provider가 위치나 사용자가 지정한 분석 기간을 누락·변경하면
+`PROVIDER_INVALID_TOOL_CALL`이다.
+
+가격 대화 HTTP 계층이 가격 또는 실제 예보 의도를 구조적으로 확정한 뒤에는 해당 실행에 필요한
+가격 Tool 계약 하나만 Provider에 전달한다. 전체 Registry와 Dispatcher는 유지하며 Provider가
+Tool 구현을 직접 호출하지 않는 경계도 동일하다. 이는 작은 로컬 모델의 무관한 Tool 선택 편차를
+줄이기 위한 범위 제한이며, 누락 인자를 Agent가 대신 채우는 동작은 허용하지 않는다.
+
 ## 도구 등록에 사용할 코드
 
 - 함수 스키마: `src.agent_tool_contracts.TOOL_SCHEMAS`

@@ -468,6 +468,11 @@ H0에서는 ToolResult, ENGINE facts, Decision, provenance와 필수 고지가 �
 검증 결과와 최종 PASS를 감사 로그에 따로 남긴다. Decision 불일치, ENGINE facts 오류, provenance
 오류와 필수 고지 데이터 누락에는 fallback을 적용하지 않는다.
 
+H1에서는 실제 예보 의도가 확인된 가격 요청에 Forecast Tool 계약만 Provider에 전달한다. 위치가
+없으면 `NEEDS_INPUT`으로 현재 위치와 주소 검색 경로를 제공하고, HTTP 경계에서 입력 위치를 KMA
+격자로 변환한 뒤 원문 주소와 위경도를 폐기한다. Response Policy는 실제 예보 적용 날짜를 ENGINE
+facts로 고정하며, 날씨와 특정 메뉴 성과의 검증되지 않은 인과 표현에는 H0 fallback을 적용하지 않는다.
+
 첫 세로 흐름은 `가격 질문 → Mock LLM → 가격 도구 → Response Policy → AgentResponse` 하나로
 제한한다. 이 흐름이 통과한 뒤 할인·날씨·세트·피드백을 같은 계약에 연결한다.
 

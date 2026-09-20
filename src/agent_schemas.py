@@ -288,6 +288,8 @@ class MissingInput:
     question: str
     source_requirement: tuple[ValueSource, ...] = (ValueSource.USER,)
     strategy_ref: str | None = None
+    input_type: str = "text"
+    options: tuple[JsonObject, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.fields or any(
@@ -302,8 +304,20 @@ class MissingInput:
             not isinstance(source, ValueSource) for source in source_requirement
         ):
             raise ValueError("source_requirement에는 허용된 값 출처가 필요합니다.")
+        if self.input_type not in {"text", "location"}:
+            raise ValueError("input_type은 text 또는 location이어야 합니다.")
+        options = tuple(_copy_object(option) for option in self.options)
+        if any(
+            not isinstance(option.get("value"), str)
+            or not option["value"].strip()
+            or not isinstance(option.get("label"), str)
+            or not option["label"].strip()
+            for option in options
+        ):
+            raise ValueError("options에는 value와 label이 필요합니다.")
         object.__setattr__(self, "fields", tuple(self.fields))
         object.__setattr__(self, "source_requirement", source_requirement)
+        object.__setattr__(self, "options", options)
 
 
 @dataclass(frozen=True)

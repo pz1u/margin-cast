@@ -74,6 +74,13 @@ function appendMetric(container, label, value, className = "") {
   container.append(metric);
 }
 
+function formatDateRange(value) {
+  if (!value || typeof value !== "object") return "적용 날짜 확인";
+  const from = typeof value.from === "string" ? value.from.replaceAll("-", ".") : "—";
+  const to = typeof value.to === "string" ? value.to.replaceAll("-", ".") : "—";
+  return `${from} ~ ${to}`;
+}
+
 function renderResultCard(message) {
   const facts = message.facts || {};
   const decision = decisionMeta(factValue(facts, "engine_decision"));
@@ -92,6 +99,19 @@ function renderResultCard(message) {
   const badge = createElement("strong", `decision-badge ${decision.className}`, decision.label);
   header.append(title, badge);
   card.append(header);
+
+  if (factValue(facts, "forecast_used") === true) {
+    const weather = createElement("div", "weather-context");
+    weather.append(createElement("span", "weather-context-label", "실제 단기예보 반영"));
+    weather.append(
+      createElement(
+        "strong",
+        "weather-context-dates",
+        formatDateRange(factValue(facts, "forecast_applied_dates")),
+      ),
+    );
+    card.append(weather);
+  }
 
   const primary = createElement("div", "primary-result");
   primary.append(createElement("span", "metric-label", "기대 기여이익 변화"));
@@ -169,6 +189,89 @@ function renderLoading() {
   return loading;
 }
 
+function renderLocationActions(article, message) {
+  const options = new Set((message.options || []).map((option) => option.value));
+  const panel = createElement("div", "location-actions");
+  const status = createElement("p", "location-status");
+  status.setAttribute("aria-live", "polite");
+
+  const addressForm = createElement("form", "location-search-form");
+  addressForm.hidden = true;
+  const addressLabel = createElement("label", "visually-hidden", "매장 주소 검색");
+  const addressInput = createElement("input", "location-search-input");
+  addressInput.type = "search";
+  addressInput.maxLength = 200;
+  addressInput.placeholder = "도로명 또는 지번 주소";
+  addressInput.autocomplete = "street-address";
+  addressLabel.append(addressInput);
+  const addressSubmit = createElement("button", "location-submit", "위치 확인");
+  addressSubmit.type = "submit";
+  addressForm.append(addressLabel, addressSubmit);
+
+  if (options.has("current_location")) {
+    const currentButton = createElement("button", "location-action-button", "현재 위치 사용");
+    currentButton.type = "button";
+    currentButton.addEventListener("click", () => {
+      if (!navigator.geolocation) {
+        status.textContent = "현재 위치를 사용할 수 없습니다. 매장 위치를 검색해주세요.";
+        addressForm.hidden = false;
+        addressInput.focus();
+        return;
+      }
+      currentButton.disabled = true;
+      status.textContent = "브라우저 위치 권한을 확인하고 있어요.";
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          controller.sendLocation(
+            {
+              source: "browser_geolocation",
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            },
+            "현재 위치를 사용합니다.",
+          );
+        },
+        () => {
+          currentButton.disabled = false;
+          status.textContent = "위치 권한을 사용할 수 없습니다. 매장 위치를 검색해주세요.";
+          addressForm.hidden = false;
+          addressInput.focus();
+        },
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+      );
+    });
+    panel.append(currentButton);
+  }
+
+  if (options.has("address_search")) {
+    const searchButton = createElement("button", "location-action-button", "매장 위치 검색");
+    searchButton.type = "button";
+    searchButton.addEventListener("click", () => {
+      addressForm.hidden = false;
+      status.textContent = "주소는 위치 확인 뒤 서버에 보관하지 않습니다.";
+      addressInput.focus();
+    });
+    panel.append(searchButton);
+  }
+
+  addressForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const addressQuery = addressInput.value.trim();
+    if (!addressQuery) {
+      status.textContent = "검색할 매장 주소를 입력해주세요.";
+      addressInput.focus();
+      return;
+    }
+    controller.sendLocation(
+      { source: "address_search", address_query: addressQuery },
+      "매장 위치를 검색합니다.",
+    );
+  });
+
+  panel.append(addressForm, status);
+  article.append(panel);
+}
+
 function renderMessage(message) {
   if (message.role === "user") {
     const article = createElement("article", "message message-user");
@@ -194,6 +297,9 @@ function renderMessage(message) {
   }
 
   article.append(createElement("p", "", message.text));
+  if (message.kind === "question" && message.inputType === "location") {
+    renderLocationActions(article, message);
+  }
   if (message.kind === "rejected" || message.kind === "error") {
     const retry = createElement("button", "retry-button", "다시 시도");
     retry.type = "button";
@@ -210,7 +316,7 @@ function welcomeMessage() {
     createElement(
       "p",
       "",
-      "검토할 메뉴와 변경 가격을 알려주세요. 필요한 값이 빠졌다면 하나씩 여쭤볼게요.",
+      "검토할 메뉴와 변경 가격을 알려주세요. 실제 날씨를 반영하려면 매장 위치를 확인할게요.",
     ),
   );
   return article;

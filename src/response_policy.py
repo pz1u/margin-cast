@@ -49,6 +49,16 @@ _PRESENTATION_ONLY_VIOLATIONS = {
     "LLM_NEXT_ACTION_CONTAINS_NUMBER",
 }
 
+_PRICE_TOOLS = {
+    "compare_price_strategies",
+    "compare_price_strategies_with_forecast",
+}
+_WEATHER_TERMS = re.compile(r"비|강수|눈|기온|온도|습도|날씨")
+_BUSINESS_EFFECT_TERMS = re.compile(r"판매량|판매|수요|매출|이익")
+_CAUSAL_DIRECTION_TERMS = re.compile(
+    r"때문|로\s*인해|영향|증가|감소|늘(?:어|고|었)|줄(?:어|고|었)|오르|내리"
+)
+
 _SAFE_EXPLANATIONS = {
     DecisionAction.RECOMMEND: "현재 근거에서는 실행을 검토할 수 있는 전략입니다.",
     DecisionAction.EXPERIMENT: (
@@ -109,6 +119,7 @@ class PriceResponsePolicy:
         engine_decision,
         evidence_quality,
         data_provenance,
+        weather_context=None,
     ):
         explanation_parts = [_SAFE_EXPLANATIONS[engine_decision]]
         validation = evidence_quality.get("validation")
@@ -118,7 +129,27 @@ class PriceResponsePolicy:
             )
         if data_provenance.get("label") == "SYNTHETIC_DATA_PROTOTYPE":
             explanation_parts.append("현재 결과는 합성 데이터 기반 프로토타입입니다.")
+        if (
+            isinstance(weather_context, dict)
+            and weather_context.get("uses_future_forecast") is True
+        ):
+            explanation_parts.append(
+                "실제 단기예보를 미래 수요 문맥에 반영했습니다."
+            )
         return " ".join(explanation_parts), _SAFE_NEXT_ACTIONS[engine_decision]
+
+    @staticmethod
+    def _contains_unvalidated_weather_causality(text):
+        if not isinstance(text, str):
+            return False
+        return all(
+            pattern.search(text) is not None
+            for pattern in (
+                _WEATHER_TERMS,
+                _BUSINESS_EFFECT_TERMS,
+                _CAUSAL_DIRECTION_TERMS,
+            )
+        )
 
     @staticmethod
     def _fallback_violations(explanation, next_action):
@@ -144,7 +175,11 @@ class PriceResponsePolicy:
         claim = final_response.decision_claim if final_response is not None else None
         claim_value = claim.value if claim is not None else None
 
-        if run_result.tool_result.tool_name != "compare_price_strategies":
+        is_forecast_tool = (
+            run_result.tool_result.tool_name
+            == "compare_price_strategies_with_forecast"
+        )
+        if run_result.tool_result.tool_name not in _PRICE_TOOLS:
             violations.append("UNSUPPORTED_POLICY_TOOL")
         if raw.get("status") != "ok":
             violations.append("TOOL_RESULT_NOT_OK")
@@ -205,6 +240,7 @@ class PriceResponsePolicy:
         provenance = {}
         notices = []
         evidence_quality = None
+        weather_context = raw.get("weather_context")
         data_provenance = raw.get("data_provenance")
         if not isinstance(data_provenance, dict) or not data_provenance:
             data_provenance = None
@@ -213,6 +249,30 @@ class PriceResponsePolicy:
             label = data_provenance.get("label")
             if not isinstance(label, str) or not label.strip():
                 violations.append("DATA_PROVENANCE_LABEL_MISSING")
+
+        forecast_context_valid = False
+        if is_forecast_tool:
+            if not isinstance(weather_context, dict):
+                violations.append("FORECAST_CONTEXT_MISSING")
+            else:
+                applied_from = weather_context.get("applied_from")
+                applied_to = weather_context.get("applied_to")
+                uses_forecast = weather_context.get("uses_future_forecast")
+                causal_validated = weather_context.get(
+                    "menu_specific_causal_effect_validated"
+                )
+                if (
+                    weather_context.get("source") != "kma_forecast"
+                    or uses_forecast is not True
+                    or not isinstance(applied_from, str)
+                    or not applied_from.strip()
+                    or not isinstance(applied_to, str)
+                    or not applied_to.strip()
+                    or not isinstance(causal_validated, bool)
+                ):
+                    violations.append("FORECAST_CONTEXT_INVALID")
+                else:
+                    forecast_context_valid = True
 
         if selected is not None and selected_id is not None and engine_decision is not None:
             selected_path = f"strategies[scenario_id={selected_id}]"
@@ -261,6 +321,31 @@ class PriceResponsePolicy:
                         "recommended_action.action",
                     ),
                 }
+                if forecast_context_valid:
+                    fact_values.update(
+                        {
+                            "forecast_used": (
+                                weather_context["uses_future_forecast"],
+                                "weather_context.uses_future_forecast",
+                            ),
+                            "forecast_applied_dates": (
+                                {
+                                    "from": weather_context["applied_from"],
+                                    "to": weather_context["applied_to"],
+                                },
+                                "weather_context[applied_from,applied_to]",
+                            ),
+                            "weather_causal_effect_validated": (
+                                weather_context[
+                                    "menu_specific_causal_effect_validated"
+                                ],
+                                (
+                                    "weather_context."
+                                    "menu_specific_causal_effect_validated"
+                                ),
+                            ),
+                        }
+                    )
                 if data_provenance is not None:
                     fact_values["data_provenance"] = (
                         data_provenance,
@@ -310,6 +395,20 @@ class PriceResponsePolicy:
             elif isinstance(warning, str) and warning.strip():
                 notices.insert(0, warning)
 
+        if forecast_context_valid:
+            notices.append(
+                "실제 기상청 단기예보를 "
+                f"{weather_context['applied_from']}부터 "
+                f"{weather_context['applied_to']}까지 미래 수요 문맥에 반영했습니다."
+            )
+            if (
+                weather_context.get("menu_specific_causal_effect_validated")
+                is False
+            ):
+                notices.append(
+                    "날씨와 이 메뉴 판매량 사이의 인과효과는 검증되지 않았습니다."
+                )
+
         explanation = (final_response.text or "") if final_response is not None else ""
         next_action = (
             final_response.next_action if final_response is not None else None
@@ -320,6 +419,15 @@ class PriceResponsePolicy:
             violations.append("LLM_EXPLANATION_CONTAINS_NUMBER")
         if next_action is not None and re.search(r"\d", next_action):
             violations.append("LLM_NEXT_ACTION_CONTAINS_NUMBER")
+        if (
+            forecast_context_valid
+            and weather_context.get("menu_specific_causal_effect_validated") is False
+            and (
+                self._contains_unvalidated_weather_causality(explanation)
+                or self._contains_unvalidated_weather_causality(next_action)
+            )
+        ):
+            violations.append("UNVALIDATED_WEATHER_CAUSAL_CLAIM")
 
         if any(
             fact.get("source") != ValueSource.ENGINE.value
@@ -349,6 +457,7 @@ class PriceResponsePolicy:
                         engine_decision,
                         evidence_quality,
                         data_provenance,
+                        weather_context,
                     )
                 )
                 fallback_violations = self._fallback_violations(

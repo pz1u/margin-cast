@@ -127,6 +127,12 @@ class AgentRuntime:
         tool_call: ToolCall,
         agent_input: AgentInput,
     ) -> None:
+        expects_forecast = "location" in agent_input.business_inputs
+        if expects_forecast and tool_call.name != "compare_price_strategies_with_forecast":
+            raise ProviderInvalidToolCallError(
+                "실제 예보 요청에는 Forecast 가격 도구를 사용해야 합니다.",
+                ("location",),
+            )
         schema = next(
             (tool for tool in self.tools if tool.get("name") == tool_call.name),
             None,
@@ -177,6 +183,26 @@ class AgentRuntime:
             error = errors[0]
             path = ".".join(str(item) for item in error.absolute_path) or "arguments"
             raise AgentRuntimeError(f"ToolCall 인자가 계약과 다릅니다: {path}: {error.message}")
+
+        if expects_forecast:
+            confirmed_fields = (
+                "menu_id",
+                "scenarios",
+                "location",
+                "horizon_days",
+            )
+            inconsistent = tuple(
+                field_name
+                for field_name in confirmed_fields
+                if field_name in agent_input.business_inputs
+                and tool_call.arguments.get(field_name)
+                != agent_input.business_inputs[field_name]
+            )
+            if inconsistent:
+                raise ProviderInvalidToolCallError(
+                    "Provider가 확인된 Forecast 입력을 변경하거나 누락했습니다.",
+                    inconsistent,
+                )
 
     @staticmethod
     def _require_single_tool_call(response: LLMResponse) -> ToolCall:

@@ -12,9 +12,9 @@ Unsupported·Insufficient Data·Engine Error는 구조화된 흐름까지 자동
 아직 없다. Ollama 응답의 Tool Call·최종 JSON 변환은 네트워크 없이 자동화했고, 실제 로컬 모델
 테스트는 환경변수로 명시적으로 활성화하는 선택 테스트로 분리했다.
 
-특히 `WEATHER-01`의 최종 자연어 표현 검사는 Agent 본체 구현과 함께 추가한다. 그 전에는
-`menu_specific_causal_effect_validated=false` 계약의 자동 테스트가 하위 방어선이고, 이 문서는
-사람이 확인하는 체크리스트이자 향후 자동화할 테스트 명세다.
+`WEATHER-01`은 H1 가격·실제 예보 Agent 흐름에서 자동화했다. Forecast ToolResult의
+`menu_specific_causal_effect_validated=false`를 확인한 뒤, LLM 설명이나 다음 행동이 특정 날씨와
+메뉴 판매량·수요·이익의 증가·감소를 인과적으로 연결하면 Response Policy가 응답을 거부한다.
 
 | ID | 질문 조건 | 필수 행동 | 실패 조건 |
 |---|---|---|---|
@@ -37,8 +37,8 @@ Unsupported·Insufficient Data·Engine Error는 구조화된 흐름까지 자동
 | MODEL-01 | 동일 ToolResult를 두 Provider가 설명 | `AgentResponse.facts`와 Decision 완전 일치 | 모델에 따라 핵심 수치나 판단 변경 |
 | PROVIDER-01 | Ollama가 State에 있는 필수 Tool 인자를 누락 | `PROVIDER_INVALID_TOOL_CALL`로 종료 | 같은 값을 사용자에게 다시 질문 |
 
-`WEATHER-01`은 시스템 프롬프트 문구 확인만으로 통과 처리하지 않는다. 실제 Tool Call 응답을
-넣은 뒤 최종 자연어 답변에서 검증되지 않은 날씨 인과 표현이 없는지 검사한다.
+`WEATHER-01`은 시스템 프롬프트 문구만 확인하지 않는다. Forecast Tool Call 응답과 인과 표현을
+포함한 Mock 최종 응답을 정책에 넣어 `UNVALIDATED_WEATHER_CAUSAL_CLAIM`과 fallback 금지를 검사한다.
 
 `MODEL-01`은 두 설명문이 같은지를 검사하지 않는다. Mock Provider 두 개가 서로 다른 설명을
 반환하도록 두고, 구조화된 `facts`, `engine_decision`, `presented_decision`만 같은지 확인한다.

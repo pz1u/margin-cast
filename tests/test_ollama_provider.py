@@ -201,6 +201,14 @@ class OllamaProviderTests(unittest.TestCase):
             "세 필드만 포함",
             client.requests[0]["json"]["messages"][0]["content"],
         )
+        self.assertIn(
+            "compare_price_strategies_with_forecast",
+            client.requests[0]["json"]["messages"][0]["content"],
+        )
+        self.assertIn(
+            "특정 날씨가 메뉴 판매량",
+            client.requests[0]["json"]["messages"][0]["content"],
+        )
 
     def test_unknown_tool_name_is_rejected(self):
         provider, _ = self.provider(

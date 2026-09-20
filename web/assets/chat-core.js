@@ -65,6 +65,10 @@
           ...base,
           kind: "question",
           text: String(payload.question || "필요한 정보를 알려주세요."),
+          inputType: String(payload.missing_input?.input_type || "text"),
+          options: Array.isArray(payload.missing_input?.options)
+            ? SAFE_COPY(payload.missing_input.options)
+            : [],
         });
         return;
       }
@@ -74,7 +78,17 @@
         return;
       }
 
-      state.messages.push({ ...base, kind: "error", text: ERROR_MESSAGE });
+      const publicErrorCodes = new Set([
+        "INSUFFICIENT_FORECAST",
+        "INVALID_LOCATION",
+        "LOCATION_CONFIGURATION_ERROR",
+        "LOCATION_LOOKUP_FAILED",
+      ]);
+      const errorCode = String(payload.error?.code || "");
+      const safeMessage = publicErrorCodes.has(errorCode)
+        ? String(payload.error?.message || ERROR_MESSAGE)
+        : ERROR_MESSAGE;
+      state.messages.push({ ...base, kind: "error", text: safeMessage });
     }
 
     async function send(message, options = {}) {
@@ -97,6 +111,7 @@
       try {
         const requestPayload = { message: text };
         if (state.sessionId) requestPayload.session_id = state.sessionId;
+        if (options.location) requestPayload.location = SAFE_COPY(options.location);
         const payload = await request(requestPayload);
         if (payload && typeof payload.session_id === "string") {
           state.sessionId = payload.session_id;
@@ -120,6 +135,14 @@
       return send(state.lastRequestMessage, { appendUser: false });
     }
 
+    async function sendLocation(location, label) {
+      if (!location || typeof location !== "object") return false;
+      const safeLabel = typeof label === "string" && label.trim()
+        ? label.trim()
+        : "매장 위치를 전달합니다.";
+      return send(safeLabel, { location });
+    }
+
     function newConversation() {
       if (state.isLoading) return false;
       state.sessionId = null;
@@ -138,6 +161,7 @@
 
     return {
       send,
+      sendLocation,
       retry,
       newConversation,
       subscribe,
