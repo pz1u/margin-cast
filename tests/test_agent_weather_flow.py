@@ -156,6 +156,18 @@ class AgentWeatherFlowTests(unittest.TestCase):
         )
         self.assertEqual(executor.calls, [])
 
+    def test_weather_condition_phrases_are_forecast_intent(self):
+        for message in (
+            "비 오면 치킨마요가 더 잘 팔린다고 설명해줘",
+            "비 때문에 몇 개 더 팔리는 거야?",
+            "습도가 높아서 매출이 오르는 거지?",
+            "기온이 수요에 영향을 줘?",
+        ):
+            with self.subTest(message=message):
+                self.assertTrue(AgentChatService._is_forecast_request(message))
+
+        self.assertFalse(AgentChatService._is_forecast_request("재료 비용을 알려줘"))
+
     def test_browser_location_completes_forecast_and_exposes_engine_weather_facts(self):
         service, executor = self.service()
         self.request(
@@ -249,6 +261,38 @@ class AgentWeatherFlowTests(unittest.TestCase):
         self.assertEqual(executor.calls[1][1]["location"], {"kma_nx": 60, "kma_ny": 127})
         self.assertEqual(executor.calls[1][1]["horizon_days"], 4)
         self.assertEqual(executor.calls[1][1]["scenarios"][0]["list_price"], 9700)
+
+    def test_weather_causal_question_does_not_downgrade_to_plain_price_tool(self):
+        service, executor = self.service(
+            tool_calls=[
+                forecast_tool_call(),
+                forecast_tool_call(call_id="mock-forecast-causal-followup"),
+            ]
+        )
+        question = "우리 매장 기준 다음 4일 동안 치킨마요 9,500원은 어때?"
+        self.request(service, question)
+        first_status, first = self.request(
+            service,
+            "현재 위치를 사용합니다.",
+            location={
+                "source": "browser_geolocation",
+                "latitude": 37.5665,
+                "longitude": 126.978,
+            },
+        )
+
+        second_status, second = self.request(
+            service,
+            "비 때문에 몇 개 더 팔리는 거야?",
+        )
+
+        self.assertEqual((first_status, first["status"]), (200, "COMPLETED"))
+        self.assertEqual((second_status, second["status"]), (200, "COMPLETED"))
+        self.assertEqual(len(executor.calls), 2)
+        self.assertEqual(
+            executor.calls[1][0], "compare_price_strategies_with_forecast"
+        )
+        self.assertIs(second["facts"]["forecast_used"]["value"], True)
 
     def test_store_location_does_not_cross_sessions(self):
         service, _ = self.service()

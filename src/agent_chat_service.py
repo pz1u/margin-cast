@@ -43,7 +43,11 @@ PRICE_PATTERN = re.compile(r"(?<!\d)(\d{1,3}(?:,\d{3})+|\d{4,7})(?:\s*원)?")
 FORECAST_HORIZON_PATTERN = re.compile(
     r"(?:다음|향후|앞으로)?\s*(\d{1,2})\s*일(?:\s*동안)?"
 )
-FORECAST_INTENT_PATTERN = re.compile(r"날씨|예보|우리\s*매장\s*기준|매장\s*기준")
+FORECAST_INTENT_PATTERN = re.compile(
+    r"날씨|예보|우리\s*매장\s*기준|매장\s*기준|"
+    r"(?:^|\s)비(?:\s|가|는|때문|로|오)|습도|기온|온도|강수|적설|"
+    r"(?:^|\s)눈(?:\s|이|은|때문|오)"
+)
 FORECAST_FOLLOWUP_PATTERN = re.compile(r"^\s*(?:그럼|그러면|그렇다면)")
 LOCATION_TTL = timedelta(hours=24)
 
