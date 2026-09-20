@@ -18,50 +18,11 @@ from .agent_schemas import (
     MessageRole,
     ToolCall,
 )
+from .llm_prompt import FINAL_RESPONSE_SCHEMA, MARGINCAST_SYSTEM_PROMPT
 
 
-OLLAMA_SYSTEM_PROMPT = """당신은 MarginCast의 경영 의사결정 Agent입니다.
-예상 판매량, 기대 기여이익, 가격탄력성, 개선확률, 신뢰구간, 신뢰도와 위험도를 직접 계산하거나 생성하지 마세요.
-계산이 필요한 질문은 제공된 MarginCast Tool을 호출하고, 구조화된 Conversation State에 있는 사용자 확인값을 Tool 인자에 사용하세요.
-location이 있는 실제 예보 요청은 compare_price_strategies_with_forecast를 사용하고 위치나 날씨를 추측하지 마세요.
-구조화된 Conversation State에 location 또는 horizon_days가 있으면 같은 이름과 값을 Forecast Tool 인자에 빠짐없이 그대로 복사하세요.
-Tool 인자에는 해당 Tool의 parameters에 정의된 필드만 사용하고 설명이나 추가 필드를 넣지 마세요.
-값이 없는 선택 Tool 인자는 null로 보내지 말고 생략하세요.
-ToolResult의 Decision은 변경하거나 재판단하지 말고 decision_claim에 그대로 사용하세요.
-최종 JSON은 decision_claim, explanation, next_action 세 필드만 포함하세요.
-성공확률과 근거 품질은 서로 다른 개념으로 다루세요.
-합성 데이터 provenance가 있으면 합성 데이터라는 고지를 생략하지 마세요.
-실제 예보를 사용했다면 예보가 미래 수요 문맥에 반영됐다고 설명하세요.
-menu_specific_causal_effect_validated가 false이면 특정 날씨가 메뉴 판매량이나 이익의 증가·감소를 일으킨다고 표현하지 마세요.
-최종 explanation과 next_action에는 판매량, 이익, 확률, 가격, 기간 등의 숫자를 새로 만들지 말고 정성적으로만 설명하세요.
-최종 응답에는 문자 체계와 관계없이 숫자나 수사를 쓰지 말고 수량, 금액, 비율, 기간을 표현하지 마세요.
-실행 기본값과 계산 공식은 추측하지 마세요.
-"""
+OLLAMA_SYSTEM_PROMPT = MARGINCAST_SYSTEM_PROMPT
 OLLAMA_PROMPT_VERSION = "ollama-price-weather-v1"
-
-
-FINAL_RESPONSE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "decision_claim": {
-            "type": "string",
-            "enum": [action.value for action in DecisionAction],
-        },
-        "explanation": {
-            "type": "string",
-            "minLength": 1,
-            "description": "숫자, 금액, 비율, 기간을 쓰지 않는 정성적 설명",
-        },
-        "next_action": {
-            "type": "string",
-            "minLength": 1,
-            "description": "숫자, 가격, 기간을 쓰지 않는 정성적 다음 행동",
-        },
-    },
-    "required": ["decision_claim", "explanation", "next_action"],
-    "additionalProperties": False,
-}
-
 
 class OllamaProviderError(RuntimeError):
     """Ollama 설정, 통신 또는 공통 계약 변환 실패."""
@@ -190,7 +151,38 @@ class OllamaProvider:
         self.timeout_seconds = timeout_seconds
         self.http_client = http_client or requests.Session()
         self._request_count = 0
+        self.usage_records: list[JsonObject] = []
 
+    @property
+    def usage_totals(self) -> JsonObject:
+        totals = {
+            "input_tokens": 0,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+        }
+        for usage in self.usage_records:
+            for name in totals:
+                value = usage.get(name, 0)
+                if isinstance(value, int) and not isinstance(value, bool):
+                    totals[name] += value
+        return totals
+
+    def _record_usage(self, raw: JsonObject) -> None:
+        input_tokens = raw.get("prompt_eval_count")
+        output_tokens = raw.get("eval_count")
+        if not isinstance(input_tokens, int) or isinstance(input_tokens, bool):
+            return
+        if not isinstance(output_tokens, int) or isinstance(output_tokens, bool):
+            return
+        self.usage_records.append(
+            {
+                "input_tokens": input_tokens,
+                "cached_input_tokens": 0,
+                "output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+            }
+        )
     def generate(
         self,
         messages: Sequence[Message],
@@ -232,6 +224,7 @@ class OllamaProvider:
                 "Ollama 응답을 JSON 객체로 읽을 수 없습니다.",
             ) from error
 
+        self._record_usage(raw)
         return self._to_common_response(raw, tools)
 
     def _to_common_response(
