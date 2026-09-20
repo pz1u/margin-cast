@@ -53,11 +53,23 @@ function updateDataStrip(capabilities) {
   byId("data-days").textContent = `${data.end_day_index - data.start_day_index + 1}일`;
   byId("data-rows").textContent = number.format(data.rows);
   byId("menu-count").textContent = `${capabilities.supported_menus.length}개`;
-  byId("data-provenance").textContent = provenance.warning;
+  byId("data-provenance-text").textContent = provenance.warning;
 }
 
 function currentMenu() {
   return state.capabilities?.supported_menus.find((menu) => menu.menu_id === byId("menu-select").value);
+}
+
+function priceLabel(price, baseline) {
+  const diff = price - baseline;
+  if (diff === 0) return "가격 유지";
+  return `${number.format(Math.abs(diff))}원 ${diff > 0 ? "인상" : "인하"}`;
+}
+
+function syncRemoveButtons() {
+  const rows = document.querySelectorAll(".scenario-row");
+  rows.forEach((row) => { row.querySelector(".remove-button").disabled = rows.length <= 1; });
+  byId("add-scenario").disabled = rows.length >= 8;
 }
 
 function addScenario(values = {}) {
@@ -67,13 +79,27 @@ function addScenario(values = {}) {
   const baseline = menu?.baseline_price || 9000;
   const fragment = byId("scenario-template").content.cloneNode(true);
   const row = fragment.querySelector(".scenario-row");
-  row.querySelector(".scenario-name").value = values.name || `${state.scenarioSequence * 500}원 인상`;
-  row.querySelector(".scenario-price").value = values.list_price || baseline + state.scenarioSequence * 500;
+  const nameInput = row.querySelector(".scenario-name");
+  const priceInput = row.querySelector(".scenario-price");
+  nameInput.value = values.name || `${state.scenarioSequence * 500}원 인상`;
+  priceInput.value = values.list_price || baseline + state.scenarioSequence * 500;
   row.querySelector(".scenario-discount").value = values.discount || 0;
+  let nameEdited = Boolean(values.name);
+  nameInput.addEventListener("input", () => { nameEdited = true; });
+  priceInput.addEventListener("input", () => {
+    if (!nameEdited && priceInput.value !== "") {
+      nameInput.value = priceLabel(Number(priceInput.value), baseline);
+    }
+  });
   row.querySelector(".remove-button").addEventListener("click", () => {
-    if (byId("scenario-list").children.length > 1) row.remove();
+    if (byId("scenario-list").children.length > 1) {
+      row.remove();
+      syncRemoveButtons();
+      markStale("price");
+    }
   });
   byId("scenario-list").append(fragment);
+  syncRemoveButtons();
 }
 
 function resetScenarios() {
@@ -89,6 +115,29 @@ function scenarioPayload() {
     list_price: Number(row.querySelector(".scenario-price").value),
     discount: Number(row.querySelector(".scenario-discount").value),
   }));
+}
+
+const staleTargets = {
+  price: { result: "price-result", note: "price-preview-note" },
+  bundle: { result: "bundle-result", note: "bundle-stale-note" },
+};
+const staleMessage = "입력이 바뀌었습니다. 아래 결과는 이전 조건의 계산입니다. 다시 계산하세요.";
+function markStale(kind) {
+  const target = staleTargets[kind];
+  if (byId(target.result).hidden) return;
+  byId(target.result).classList.add("is-stale");
+  byId(target.note).textContent = staleMessage;
+  byId(target.note).hidden = false;
+}
+function clearStale(kind) {
+  const target = staleTargets[kind];
+  byId(target.result).classList.remove("is-stale");
+  byId(target.note).hidden = true;
+}
+function showResult(headingId) {
+  if (window.matchMedia("(max-width: 900px)").matches) {
+    byId(headingId).scrollIntoView({ block: "start" });
+  }
 }
 
 function setDecision(element, action) {
@@ -198,7 +247,7 @@ function renderPendingPlan() {
   byId("feedback-pending-card").hidden = !selected;
   if (!selected) return;
   byId("feedback-pending-card").textContent =
-    `${selected.scenario.name} · ${selected.start_date}—${selected.end_date} · ` +
+    `${selected.scenario.name} · ${selected.start_date} ~ ${selected.end_date} · ` +
     `예상 기여이익 ${won(selected.prediction.contribution_profit.mean)}`;
 }
 
@@ -254,7 +303,7 @@ function renderFeedbackSummary(summary, record = null) {
   }
 }
 
-function renderPriceResult(payload) {
+function renderPriceResult(payload, { armFeedback = true } = {}) {
   const action = payload.recommended_action;
   const recommended = payload.strategies.find((strategy) => strategy.name === action.name);
   byId("price-empty").hidden = true;
@@ -263,12 +312,12 @@ function renderPriceResult(payload) {
   byId("price-recommendation-name").textContent = action.name;
   byId("price-recommendation-reason").textContent = action.reason;
   byId("price-weather-context").textContent = payload.weather
-    ? `실제 단기예보 · ${payload.weather.applied_from}—${payload.weather.applied_to}`
+    ? `실제 단기예보 · ${payload.weather.applied_from} ~ ${payload.weather.applied_to}`
     : "최근 관측 날씨 문맥";
   byId("price-profit-delta").textContent = won(recommended.profit_delta.mean, true);
-  byId("price-profit-range").textContent = `${won(recommended.profit_delta.p10, true)} — ${won(recommended.profit_delta.p90, true)}`;
+  byId("price-profit-range").textContent = `${won(recommended.profit_delta.p10, true)} ~ ${won(recommended.profit_delta.p90, true)}`;
   byId("price-success").textContent = percent(recommended.success_probability);
-  byId("price-confidence").textContent = recommended.evidence_quality?.label || "—";
+  byId("price-confidence").textContent = recommended.evidence_quality?.label || "-";
   const evidenceQuality = recommended.evidence_quality;
   if (evidenceQuality?.evidence) {
     const evidence = evidenceQuality.evidence;
@@ -277,13 +326,13 @@ function renderPriceResult(payload) {
       : "";
     byId("price-evidence").textContent =
       `가격 실험 ${evidence.price_events}회${promotion}, 관측 결제가격 ` +
-      `${won(evidence.observed_paid_price_range[0])}—${won(evidence.observed_paid_price_range[1])}. ` +
+      `${won(evidence.observed_paid_price_range[0])} ~ ${won(evidence.observed_paid_price_range[1])}. ` +
       `${evidenceQuality.interpretation} ${evidenceQuality.validation.statement}`;
   } else {
     byId("price-evidence").textContent = payload.interpretation_notes.join(" ");
   }
   addBarChart(byId("price-chart"), payload.strategies, action.name);
-  prepareFeedback(payload, recommended);
+  if (armFeedback) prepareFeedback(payload, recommended);
 }
 
 function renderBundleResult(payload) {
@@ -294,7 +343,7 @@ function renderBundleResult(payload) {
   byId("bundle-recommendation-name").textContent = strategy.name;
   byId("bundle-recommendation-reason").textContent = payload.decision.reason;
   byId("bundle-profit-delta").textContent = won(strategy.profit_delta.mean, true);
-  byId("bundle-profit-range").textContent = `${won(strategy.profit_delta.p10, true)} — ${won(strategy.profit_delta.p90, true)}`;
+  byId("bundle-profit-range").textContent = `${won(strategy.profit_delta.p10, true)} ~ ${won(strategy.profit_delta.p90, true)}`;
   byId("bundle-success").textContent = percent(strategy.success_probability);
   byId("bundle-confidence").textContent = strategy.evidence_quality.label;
   byId("bundle-evidence").textContent =
@@ -334,6 +383,7 @@ async function initialize() {
     updateDataStrip(capabilities);
     resetScenarios();
     setServiceStatus(true, "계산 엔진 연결됨");
+    runPriceComparison({ preview: true });
     try {
       const [summary, pending] = await Promise.all([
         requestJson("/api/experiments/feedback/summary"),
@@ -350,18 +400,36 @@ async function initialize() {
   }
 }
 
-document.querySelectorAll(".mode-tab").forEach((tab) => {
-  tab.addEventListener("click", () => {
-    document.querySelectorAll(".mode-tab").forEach((item) => {
-      const active = item === tab;
-      item.classList.toggle("is-active", active);
-      item.setAttribute("aria-selected", String(active));
-      byId(item.dataset.panel).hidden = !active;
-    });
+const modeTabs = [...document.querySelectorAll(".mode-tab")];
+function activateTab(tab, moveFocus = false) {
+  modeTabs.forEach((item) => {
+    const active = item === tab;
+    item.classList.toggle("is-active", active);
+    item.setAttribute("aria-selected", String(active));
+    item.tabIndex = active ? 0 : -1;
+    byId(item.dataset.panel).hidden = !active;
+  });
+  if (moveFocus) tab.focus();
+}
+modeTabs.forEach((tab, index) => {
+  tab.addEventListener("click", () => activateTab(tab));
+  tab.addEventListener("keydown", (event) => {
+    const last = modeTabs.length - 1;
+    const target = {
+      ArrowRight: modeTabs[index === last ? 0 : index + 1],
+      ArrowLeft: modeTabs[index === 0 ? last : index - 1],
+      Home: modeTabs[0],
+      End: modeTabs[last],
+    }[event.key];
+    if (!target) return;
+    event.preventDefault();
+    activateTab(target, true);
   });
 });
 
-byId("add-scenario").addEventListener("click", () => addScenario());
+byId("add-scenario").addEventListener("click", () => { addScenario(); markStale("price"); });
+byId("price-form").addEventListener("input", () => markStale("price"));
+byId("bundle-form").addEventListener("input", () => markStale("bundle"));
 byId("menu-select").addEventListener("change", resetScenarios);
 byId("use-forecast").addEventListener("change", (event) => {
   const enabled = event.target.checked;
@@ -382,8 +450,7 @@ byId("use-forecast").addEventListener("change", (event) => {
 });
 byId("feedback-pending").addEventListener("change", renderPendingPlan);
 
-byId("price-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
+async function runPriceComparison({ preview = false } = {}) {
   const button = byId("price-submit");
   const message = byId("price-message");
   button.disabled = true;
@@ -406,13 +473,28 @@ byId("price-form").addEventListener("submit", async (event) => {
       method: "POST",
       body: JSON.stringify(request),
     });
-    renderPriceResult(payload);
+    renderPriceResult(payload, { armFeedback: !preview });
+    clearStale("price");
+    if (preview) {
+      byId("price-preview-note").textContent =
+        "기본 조건으로 미리 계산한 예시입니다. 왼쪽에서 조건을 바꾼 뒤 다시 비교하세요.";
+      byId("price-preview-note").hidden = false;
+      byId("price-decision").textContent = "예시";
+      byId("price-decision").className = "decision-badge is-idle";
+    } else {
+      showResult("price-result-title");
+    }
   } catch (error) {
-    message.textContent = error.message;
+    if (!preview) message.textContent = error.message;
   } finally {
     button.disabled = false;
     button.firstElementChild.textContent = "전략 비교하기";
   }
+}
+
+byId("price-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  runPriceComparison();
 });
 
 byId("bundle-form").addEventListener("submit", async (event) => {
@@ -443,6 +525,8 @@ byId("bundle-form").addEventListener("submit", async (event) => {
       }),
     });
     renderBundleResult(payload);
+    clearStale("bundle");
+    showResult("bundle-result-title");
   } catch (error) {
     message.textContent = error.message;
   } finally {

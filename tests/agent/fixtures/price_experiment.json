@@ -1,0 +1,440 @@
+{
+  "status": "ok",
+  "engine_version": "0.5.0",
+  "request": {
+    "menu_id": "M02",
+    "horizon_days": 14,
+    "simulations": 10000,
+    "seed": 42
+  },
+  "weather_context_source": "observed_history",
+  "weather_context": {
+    "source": "observed_history",
+    "uses_future_forecast": false,
+    "menu_specific_causal_effect_validated": false,
+    "interpretation": "날씨는 미래 수요 문맥으로 사용되며 메뉴별 날씨 인과효과를 입증하지 않는다."
+  },
+  "data_provenance": {
+    "source_type": "synthetic_pos",
+    "dataset_version": "synthetic-pos-v2",
+    "uses_actual_store_data": false,
+    "label": "SYNTHETIC_DATA_PROTOTYPE",
+    "warning": "현재 예측은 합성 POS 데이터에서 학습한 프로토타입 결과이며 실제 매장 성과를 보증하지 않는다.",
+    "training_rows": 21120,
+    "training_period": {
+      "start": "2026-01-05",
+      "end": "2026-05-04"
+    }
+  },
+  "model": {
+    "elasticity": -1.4486909131010681,
+    "elasticity_standard_error": 0.5526027897325733,
+    "ground_truth_used": false
+  },
+  "strategies": [
+    {
+      "name": "현재 가격",
+      "list_price": 10000,
+      "discount": 0,
+      "paid_price": 10000,
+      "is_reference": true,
+      "demand_multiplier": {
+        "mean": 1.0,
+        "p05": 1.0,
+        "p10": 1.0,
+        "p50": 1.0,
+        "p90": 1.0,
+        "p95": 1.0
+      },
+      "units": {
+        "mean": 611.5073,
+        "p05": 524.0,
+        "p10": 542.0,
+        "p50": 610.0,
+        "p90": 682.0,
+        "p95": 705.0499999999993
+      },
+      "contribution_profit": {
+        "mean": 2401133.9502185793,
+        "p05": 1973986.772204956,
+        "p10": 2062168.7744694836,
+        "p50": 2391876.6619063625,
+        "p90": 2746580.0455785617,
+        "p95": 2854508.6286434187
+      },
+      "profit_delta": {
+        "mean": 0.0,
+        "p05": 0.0,
+        "p10": 0.0,
+        "p50": 0.0,
+        "p90": 0.0,
+        "p95": 0.0
+      },
+      "success_probability": null,
+      "evidence_quality": null,
+      "downside_risk": false
+    },
+    {
+      "name": "500원 인상",
+      "list_price": 10500,
+      "discount": 0,
+      "paid_price": 10500,
+      "is_reference": false,
+      "demand_multiplier": {
+        "mean": 0.9323353578424736,
+        "p05": 0.8923184700124307,
+        "p10": 0.9007473962486188,
+        "p50": 0.9317284952501027,
+        "p90": 0.9649150133605552,
+        "p95": 0.9740394787902672
+      },
+      "units": {
+        "mean": 570.6195,
+        "p05": 484.0,
+        "p10": 502.0,
+        "p50": 569.0,
+        "p90": 642.0,
+        "p95": 666.0
+      },
+      "contribution_profit": {
+        "mean": 2496170.0750908935,
+        "p05": 2053349.1232302054,
+        "p10": 2143093.4797465745,
+        "p50": 2484073.2758740056,
+        "p90": 2862921.8737926837,
+        "p95": 2976027.5467639826
+      },
+      "profit_delta": {
+        "mean": 95036.12487231445,
+        "p05": -167281.48628129935,
+        "p10": -110938.14234641686,
+        "p50": 94522.60656553193,
+        "p90": 300118.1304034822,
+        "p95": 357237.0203824972
+      },
+      "success_probability": 0.7285,
+      "evidence_quality": {
+        "version": "heuristic-v1",
+        "formula_fingerprint": "8035bb468bd655604f9c8d3ef98957f0242591eb1d8a8320d29aa89225386637",
+        "score": 68.6,
+        "label": "MEDIUM",
+        "is_probability": false,
+        "validation": {
+          "status": "PENDING_REAL_STORE_FEEDBACK",
+          "empirically_calibrated": false,
+          "statement": "실제 매장 피드백이 없어 점수와 예측 정확도의 관계는 아직 검증되지 않았다."
+        },
+        "components": {
+          "experiment_evidence": 25.0,
+          "estimation_precision": 18.6,
+          "scenario_support": 20.0,
+          "weather_context": 5.0
+        },
+        "evidence": {
+          "price_events": 3,
+          "promotion_events": 2,
+          "observed_paid_price_range": [
+            9000,
+            11000
+          ],
+          "scenario_paid_price": 10500,
+          "uses_promotion_effect": false
+        },
+        "interpretation": "모델 근거의 품질을 나타내는 미보정 휴리스틱 점수이며 전략의 성공확률이 아니다."
+      },
+      "decision": {
+        "action": "EXPERIMENT",
+        "decision_value": -49336.91415574354,
+        "unit": "KRW risk-adjusted heuristic",
+        "is_probability": false,
+        "downside_risk": true,
+        "reason": "기대 개선은 있으나 근거·하방 범위·개선확률 중 하나가 본 실행 기준에 못 미친다.",
+        "inputs": {
+          "expected_profit_delta": 95036.12487231445,
+          "profit_delta_p10": -110938.14234641686,
+          "success_probability": 0.7285,
+          "evidence_quality_label": "MEDIUM",
+          "evidence_quality_score": 68.6,
+          "evidence_quality_version": "heuristic-v1"
+        }
+      },
+      "downside_risk": true
+    },
+    {
+      "name": "1,000원 인상",
+      "list_price": 11000,
+      "discount": 0,
+      "paid_price": 11000,
+      "is_reference": false,
+      "demand_multiplier": {
+        "mean": 0.8726762129870136,
+        "p05": 0.800464389775485,
+        "p10": 0.8153016076937977,
+        "p50": 0.8709790010903711,
+        "p90": 0.9326094955876237,
+        "p95": 0.9499147654686997
+      },
+      "units": {
+        "mean": 533.7225,
+        "p05": 443.0,
+        "p10": 462.0,
+        "p50": 531.0,
+        "p90": 609.0,
+        "p95": 632.0
+      },
+      "contribution_profit": {
+        "mean": 2574264.2533423477,
+        "p05": 2094014.4195541367,
+        "p10": 2193448.161422551,
+        "p50": 2560146.4911338524,
+        "p90": 2982279.168792923,
+        "p95": 3101035.2679895014
+      },
+      "profit_delta": {
+        "mean": 173130.30312376865,
+        "p05": -168682.3735469104,
+        "p10": -94505.3727879066,
+        "p50": 170781.23345706763,
+        "p90": 438047.2349789668,
+        "p95": 515072.68311653077
+      },
+      "success_probability": 0.7965,
+      "evidence_quality": {
+        "version": "heuristic-v1",
+        "formula_fingerprint": "8035bb468bd655604f9c8d3ef98957f0242591eb1d8a8320d29aa89225386637",
+        "score": 68.6,
+        "label": "MEDIUM",
+        "is_probability": false,
+        "validation": {
+          "status": "PENDING_REAL_STORE_FEEDBACK",
+          "empirically_calibrated": false,
+          "statement": "실제 매장 피드백이 없어 점수와 예측 정확도의 관계는 아직 검증되지 않았다."
+        },
+        "components": {
+          "experiment_evidence": 25.0,
+          "estimation_precision": 18.6,
+          "scenario_support": 20.0,
+          "weather_context": 5.0
+        },
+        "evidence": {
+          "price_events": 3,
+          "promotion_events": 2,
+          "observed_paid_price_range": [
+            9000,
+            11000
+          ],
+          "scenario_paid_price": 11000,
+          "uses_promotion_effect": false
+        },
+        "interpretation": "모델 근거의 품질을 나타내는 미보정 휴리스틱 점수이며 전략의 성공확률이 아니다."
+      },
+      "decision": {
+        "action": "EXPERIMENT",
+        "decision_value": 22130.34829778729,
+        "unit": "KRW risk-adjusted heuristic",
+        "is_probability": false,
+        "downside_risk": true,
+        "reason": "기대 개선은 있으나 근거·하방 범위·개선확률 중 하나가 본 실행 기준에 못 미친다.",
+        "inputs": {
+          "expected_profit_delta": 173130.30312376865,
+          "profit_delta_p10": -94505.3727879066,
+          "success_probability": 0.7965,
+          "evidence_quality_label": "MEDIUM",
+          "evidence_quality_score": 68.6,
+          "evidence_quality_version": "heuristic-v1"
+        }
+      },
+      "downside_risk": true
+    },
+    {
+      "name": "1,500원 인상",
+      "list_price": 11500,
+      "discount": 0,
+      "paid_price": 11500,
+      "is_reference": false,
+      "demand_multiplier": {
+        "mean": 0.8197445309427525,
+        "p05": 0.7215420579002018,
+        "p10": 0.7412385461337129,
+        "p50": 0.8166347161331582,
+        "p90": 0.9027513009552244,
+        "p95": 0.9274210856711532
+      },
+      "units": {
+        "mean": 501.413,
+        "p05": 408.0,
+        "p10": 426.0,
+        "p50": 498.0,
+        "p90": 579.0,
+        "p95": 605.0
+      },
+      "contribution_profit": {
+        "mean": 2643282.4628350968,
+        "p05": 2107028.794763787,
+        "p10": 2209807.309514012,
+        "p50": 2630748.703769791,
+        "p90": 3091993.1293081264,
+        "p95": 3229941.4104105826
+      },
+      "profit_delta": {
+        "mean": 242148.51261651772,
+        "p05": -165664.0668382841,
+        "p10": -79041.04951099069,
+        "p50": 231768.32940122997,
+        "p90": 576724.2246203456,
+        "p95": 677842.5274456515
+      },
+      "success_probability": 0.83,
+      "evidence_quality": {
+        "version": "heuristic-v1",
+        "formula_fingerprint": "8035bb468bd655604f9c8d3ef98957f0242591eb1d8a8320d29aa89225386637",
+        "score": 59.5,
+        "label": "MEDIUM",
+        "is_probability": false,
+        "validation": {
+          "status": "PENDING_REAL_STORE_FEEDBACK",
+          "empirically_calibrated": false,
+          "statement": "실제 매장 피드백이 없어 점수와 예측 정확도의 관계는 아직 검증되지 않았다."
+        },
+        "components": {
+          "experiment_evidence": 25.0,
+          "estimation_precision": 18.6,
+          "scenario_support": 10.9,
+          "weather_context": 5.0
+        },
+        "evidence": {
+          "price_events": 3,
+          "promotion_events": 2,
+          "observed_paid_price_range": [
+            9000,
+            11000
+          ],
+          "scenario_paid_price": 11500,
+          "uses_promotion_effect": false
+        },
+        "interpretation": "모델 근거의 품질을 나타내는 미보정 휴리스틱 점수이며 전략의 성공확률이 아니다."
+      },
+      "decision": {
+        "action": "EXPERIMENT",
+        "decision_value": 87133.3672720946,
+        "unit": "KRW risk-adjusted heuristic",
+        "is_probability": false,
+        "downside_risk": true,
+        "reason": "기대 개선은 있으나 근거·하방 범위·개선확률 중 하나가 본 실행 기준에 못 미친다.",
+        "inputs": {
+          "expected_profit_delta": 242148.51261651772,
+          "profit_delta_p10": -79041.04951099069,
+          "success_probability": 0.83,
+          "evidence_quality_label": "MEDIUM",
+          "evidence_quality_score": 59.5,
+          "evidence_quality_version": "heuristic-v1"
+        }
+      },
+      "downside_risk": true
+    }
+  ],
+  "highest_expected_profit": {
+    "name": "1,500원 인상",
+    "expected_contribution_profit": 2643282.4628350968,
+    "success_probability": 0.83,
+    "downside_risk": true,
+    "evidence_quality": {
+      "version": "heuristic-v1",
+      "formula_fingerprint": "8035bb468bd655604f9c8d3ef98957f0242591eb1d8a8320d29aa89225386637",
+      "score": 59.5,
+      "label": "MEDIUM",
+      "is_probability": false,
+      "validation": {
+        "status": "PENDING_REAL_STORE_FEEDBACK",
+        "empirically_calibrated": false,
+        "statement": "실제 매장 피드백이 없어 점수와 예측 정확도의 관계는 아직 검증되지 않았다."
+      },
+      "components": {
+        "experiment_evidence": 25.0,
+        "estimation_precision": 18.6,
+        "scenario_support": 10.9,
+        "weather_context": 5.0
+      },
+      "evidence": {
+        "price_events": 3,
+        "promotion_events": 2,
+        "observed_paid_price_range": [
+          9000,
+          11000
+        ],
+        "scenario_paid_price": 11500,
+        "uses_promotion_effect": false
+      },
+      "interpretation": "모델 근거의 품질을 나타내는 미보정 휴리스틱 점수이며 전략의 성공확률이 아니다."
+    }
+  },
+  "decision_ranking": [
+    {
+      "rank": 1,
+      "name": "1,500원 인상",
+      "action": "EXPERIMENT",
+      "decision_value": 87133.3672720946,
+      "unit": "KRW risk-adjusted heuristic",
+      "is_probability": false,
+      "downside_risk": true,
+      "reason": "기대 개선은 있으나 근거·하방 범위·개선확률 중 하나가 본 실행 기준에 못 미친다.",
+      "inputs": {
+        "expected_profit_delta": 242148.51261651772,
+        "profit_delta_p10": -79041.04951099069,
+        "success_probability": 0.83,
+        "evidence_quality_label": "MEDIUM",
+        "evidence_quality_score": 59.5,
+        "evidence_quality_version": "heuristic-v1"
+      }
+    },
+    {
+      "rank": 2,
+      "name": "1,000원 인상",
+      "action": "EXPERIMENT",
+      "decision_value": 22130.34829778729,
+      "unit": "KRW risk-adjusted heuristic",
+      "is_probability": false,
+      "downside_risk": true,
+      "reason": "기대 개선은 있으나 근거·하방 범위·개선확률 중 하나가 본 실행 기준에 못 미친다.",
+      "inputs": {
+        "expected_profit_delta": 173130.30312376865,
+        "profit_delta_p10": -94505.3727879066,
+        "success_probability": 0.7965,
+        "evidence_quality_label": "MEDIUM",
+        "evidence_quality_score": 68.6,
+        "evidence_quality_version": "heuristic-v1"
+      }
+    },
+    {
+      "rank": 3,
+      "name": "500원 인상",
+      "action": "EXPERIMENT",
+      "decision_value": -49336.91415574354,
+      "unit": "KRW risk-adjusted heuristic",
+      "is_probability": false,
+      "downside_risk": true,
+      "reason": "기대 개선은 있으나 근거·하방 범위·개선확률 중 하나가 본 실행 기준에 못 미친다.",
+      "inputs": {
+        "expected_profit_delta": 95036.12487231445,
+        "profit_delta_p10": -110938.14234641686,
+        "success_probability": 0.7285,
+        "evidence_quality_label": "MEDIUM",
+        "evidence_quality_score": 68.6,
+        "evidence_quality_version": "heuristic-v1"
+      }
+    }
+  ],
+  "recommended_action": {
+    "name": "1,500원 인상",
+    "action": "EXPERIMENT",
+    "reason": "기대 개선은 있으나 근거·하방 범위·개선확률 중 하나가 본 실행 기준에 못 미친다."
+  },
+  "interpretation_notes": [
+    "highest_expected_profit은 기대값 기준 정렬이며 최종 실행 결정은 아니다.",
+    "decision_ranking은 기대이익·개선확률·80% 하한·근거 품질을 함께 반영한다.",
+    "downside_risk는 현재 대비 기여이익 차이의 10백분위가 0보다 작은 경우 true다.",
+    "미래 날씨 예보가 없으므로 최근 관측 문맥을 재사용했다.",
+    "evidence_quality는 실제 매장 결과로 아직 보정되지 않은 휴리스틱이며 success_probability와 별개다.",
+    "날씨는 미래 수요 문맥으로 사용되며 메뉴별 날씨 인과효과를 입증하지 않는다."
+  ]
+}

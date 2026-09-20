@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="MarginCast 개인정보처리방침">
+  <title>개인정보처리방침 · MarginCast</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">본문으로 이동</a>
+
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="MarginCast 홈">
+      <span class="brand-mark" aria-hidden="true">MC</span>
+      <span>MarginCast</span>
+    </a>
+    <a class="back-link" href="/">시뮬레이터로 돌아가기</a>
+  </header>
+
+  <main id="main-content" class="doc">
+    <p class="eyebrow">개인정보와 데이터 처리</p>
+    <h1>개인정보처리방침</h1>
+    <p class="callout-block"><strong>초안</strong><span>이 문서는 현재 서비스 코드의 동작을 기준으로 작성한 초안입니다. <mark class="todo">입력 필요</mark>로 표시된 항목은 운영자가 실제 정보를 채우고 법률 검토를 마친 뒤에 공개하세요.</span></p>
+
+    <dl class="doc-meta">
+      <div><dt>시행일</dt><dd><mark class="todo">입력 필요: 시행 날짜</mark></dd></div>
+      <div><dt>개인정보처리자</dt><dd><mark class="todo">입력 필요: 상호 또는 성명</mark></dd></div>
+      <div><dt>개인정보 보호책임자</dt><dd><mark class="todo">입력 필요: 이름, 직책, 이메일</mark></dd></div>
+    </dl>
+
+    <section>
+      <h2>1. 요약</h2>
+      <p>MarginCast에는 회원가입과 로그인이 없습니다. 서비스 화면은 쿠키나 브라우저 저장소(localStorage 등)를 사용하지 않습니다. 이용자가 입력한 값 중 저장되는 것은 이용자가 직접 저장하는 실험 계획과 실제 결과 기록입니다.</p>
+    </section>
+
+    <section>
+      <h2>2. 처리하는 정보</h2>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="표 (가로 스크롤 가능)">
+        <table>
+          <caption class="visually-hidden">MarginCast가 처리하는 정보</caption>
+          <thead><tr><th scope="col">정보</th><th scope="col">사용 목적</th><th scope="col">저장 여부</th></tr></thead>
+          <tbody>
+            <tr>
+              <th scope="row">매장 주소 (실제 단기예보 반영을 선택한 경우)</th>
+              <td>주소를 좌표로 바꿔 기상청 단기예보를 조회</td>
+              <td>현재 코드에서는 실험 기록에 주소 원문을 저장하지 않습니다. <mark class="todo">입력 필요: 배포 환경에서 재확인</mark></td>
+            </tr>
+            <tr>
+              <th scope="row">가격, 할인, 세트 조건 등 시뮬레이션 입력값</th>
+              <td>계산 요청 처리</td>
+              <td>계산 후 별도로 저장하지 않습니다. 실험 계획으로 저장할 때는 선택한 전략의 정가와 할인액이 함께 저장됩니다.</td>
+            </tr>
+            <tr>
+              <th scope="row">실험 계획과 결과: 실험 이름, 메뉴, 시작일과 종료일, 예측 범위, 실제 판매량, 실제 기여이익, 기준선 기여이익</th>
+              <td>예측 오차, 예측 구간 포함률, 개선 방향 정확도 계산</td>
+              <td>서버의 JSON 파일에 저장합니다. 보관 기간: <mark class="todo">입력 필요: 보관 기간</mark></td>
+            </tr>
+            <tr>
+              <th scope="row">접속 기록 (IP 주소, 요청 시각 등)</th>
+              <td>보안과 장애 대응</td>
+              <td>MarginCast 서버는 요청 로그를 남기지 않도록 구성되어 있습니다. 공개 배포 시 호스팅과 프록시의 로그: <mark class="todo">입력 필요: 수집 여부와 보관 기간</mark></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>실험 이름 등 자유 입력란에는 이름, 연락처 같은 개인정보를 입력하지 마세요.</p>
+    </section>
+
+    <section>
+      <h2>3. 외부 서비스로 전달되는 정보</h2>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="표 (가로 스크롤 가능)">
+        <table>
+          <caption class="visually-hidden">외부 서비스로 전달되는 정보</caption>
+          <thead><tr><th scope="col">받는 곳</th><th scope="col">전달 정보</th><th scope="col">목적</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">카카오 (로컬 주소 검색 API)</th><td>이용자가 입력한 주소</td><td>주소를 좌표로 변환</td></tr>
+            <tr><th scope="row">기상청 (단기예보 API)</th><td>주소에서 변환한 좌표</td><td>예보 조회</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>이 전달은 이용자가 "실제 단기예보 반영"을 선택하고 계산을 요청할 때만 일어납니다. 각 사업자의 보관과 이용 방식은 해당 사업자의 정책을 따릅니다. 처리 위탁과 제3자 제공의 법적 분류: <mark class="todo">입력 필요: 법률 검토</mark></p>
+    </section>
+
+    <section>
+      <h2>4. 보관과 삭제</h2>
+      <p>저장된 실험 기록의 보관 기간과 파기 시점: <mark class="todo">입력 필요: 보관 기간과 파기 방법</mark></p>
+      <p>현재 화면에는 저장된 기록을 삭제하는 기능이 없습니다. 삭제 요청을 받는 방법: <mark class="todo">입력 필요: 삭제 요청 창구와 처리 기한</mark></p>
+    </section>
+
+    <section>
+      <h2>5. 이용자의 권리와 문의</h2>
+      <p>열람, 정정, 삭제, 처리 정지를 요청하는 방법과 담당 부서: <mark class="todo">입력 필요: 이메일 또는 연락처</mark></p>
+    </section>
+
+    <section>
+      <h2>6. 국외 이전</h2>
+      <p>서버 호스팅 위치와 국외 이전 여부: <mark class="todo">입력 필요: 호스팅 환경 확정 후 작성</mark></p>
+    </section>
+
+    <section>
+      <h2>7. 안전성 확보 조치</h2>
+      <p><mark class="todo">입력 필요: 배포 환경에서 실제로 적용한 접근 통제, 전송 구간 암호화, 저장 파일 보호 조치</mark></p>
+    </section>
+
+    <section>
+      <h2>8. 방침의 변경</h2>
+      <p>변경 시 공지 방법과 이전 버전 보관: <mark class="todo">입력 필요: 운영 정책</mark></p>
+    </section>
+  </main>
+
+  <footer>
+    <span>MarginCast</span>
+    <p>숫자는 계산 엔진이 만들고, 판단 근거는 투명하게 보여줍니다.</p>
+    <nav class="footer-links" aria-label="정책 문서"><a href="/terms.html">이용약관</a><a href="/privacy.html">개인정보처리방침</a></nav>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "status": "error",
+  "error": {
+    "code": "UNSUPPORTED_MENU",
+    "message": "M04는 가격 변화 근거가 부족해 전략 비교를 지원하지 않습니다.",
+    "retryable": false,
+    "details": {
+      "supported_menu_ids": [
+        "M01",
+        "M02",
+        "M03"
+      ],
+      "reason_code": "INSUFFICIENT_PRICE_VARIATION",
+      "required_unique_price_levels": 2,
+      "observed_price_levels": [
+        8000
+      ],
+      "next_step": "기준 가격 외 최소 한 개 가격을 별도 기간에 운영해 두 개 이상의 가격 수준을 확보하세요."
+    }
+  }
+}

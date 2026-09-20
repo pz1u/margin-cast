@@ -1,0 +1,162 @@
+{
+  "status": "ok",
+  "service": "MarginCast Decision Engine",
+  "version": "0.5.0",
+  "data": {
+    "start_day_index": 1,
+    "end_day_index": 180,
+    "rows": 31680,
+    "ground_truth_used": false
+  },
+  "data_provenance": {
+    "source_type": "synthetic_pos",
+    "dataset_version": "synthetic-pos-v2",
+    "uses_actual_store_data": false,
+    "label": "SYNTHETIC_DATA_PROTOTYPE",
+    "warning": "현재 예측은 합성 POS 데이터에서 학습한 프로토타입 결과이며 실제 매장 성과를 보증하지 않는다.",
+    "training_rows": 21120,
+    "training_period": {
+      "start": "2026-01-05",
+      "end": "2026-05-04"
+    }
+  },
+  "supported_menus": [
+    {
+      "menu_id": "M01",
+      "menu_name": "치킨마요",
+      "baseline_price": 9000,
+      "observed_price_levels": [
+        9000,
+        9500,
+        10000
+      ],
+      "required_unique_price_levels": 2
+    },
+    {
+      "menu_id": "M02",
+      "menu_name": "돈까스덮밥",
+      "baseline_price": 10000,
+      "observed_price_levels": [
+        10000,
+        10500,
+        11000
+      ],
+      "required_unique_price_levels": 2
+    },
+    {
+      "menu_id": "M03",
+      "menu_name": "제육덮밥",
+      "baseline_price": 9500,
+      "observed_price_levels": [
+        9500,
+        10000,
+        10500
+      ],
+      "required_unique_price_levels": 2
+    }
+  ],
+  "unsupported_menus": [
+    {
+      "menu_id": "M04",
+      "menu_name": "카레",
+      "baseline_price": 8000,
+      "observed_price_levels": [
+        8000
+      ],
+      "required_unique_price_levels": 2,
+      "reason_code": "INSUFFICIENT_PRICE_VARIATION",
+      "next_step": "기준 가격 외 최소 한 개 가격을 별도 기간에 운영해 두 개 이상의 가격 수준을 확보하세요."
+    },
+    {
+      "menu_id": "M05",
+      "menu_name": "감자튀김",
+      "baseline_price": 3500,
+      "observed_price_levels": [
+        3500
+      ],
+      "required_unique_price_levels": 2,
+      "reason_code": "INSUFFICIENT_PRICE_VARIATION",
+      "next_step": "기준 가격 외 최소 한 개 가격을 별도 기간에 운영해 두 개 이상의 가격 수준을 확보하세요."
+    },
+    {
+      "menu_id": "M06",
+      "menu_name": "콜라",
+      "baseline_price": 2000,
+      "observed_price_levels": [
+        2000
+      ],
+      "required_unique_price_levels": 2,
+      "reason_code": "INSUFFICIENT_PRICE_VARIATION",
+      "next_step": "기준 가격 외 최소 한 개 가격을 별도 기간에 운영해 두 개 이상의 가격 수준을 확보하세요."
+    },
+    {
+      "menu_id": "M07",
+      "menu_name": "제로콜라",
+      "baseline_price": 2000,
+      "observed_price_levels": [
+        2000
+      ],
+      "required_unique_price_levels": 2,
+      "reason_code": "INSUFFICIENT_PRICE_VARIATION",
+      "next_step": "기준 가격 외 최소 한 개 가격을 별도 기간에 운영해 두 개 이상의 가격 수준을 확보하세요."
+    },
+    {
+      "menu_id": "M08",
+      "menu_name": "미니우동",
+      "baseline_price": 3000,
+      "observed_price_levels": [
+        3000
+      ],
+      "required_unique_price_levels": 2,
+      "reason_code": "INSUFFICIENT_PRICE_VARIATION",
+      "next_step": "기준 가격 외 최소 한 개 가격을 별도 기간에 운영해 두 개 이상의 가격 수준을 확보하세요."
+    }
+  ],
+  "operations": [
+    "get_margincast_capabilities",
+    "compare_price_strategies",
+    "compare_price_strategies_with_forecast",
+    "simulate_bundle_strategy",
+    "create_experiment_plan",
+    "list_pending_experiments",
+    "record_experiment_result",
+    "get_feedback_summary"
+  ],
+  "execution_defaults": {
+    "compare_price_strategies": {
+      "horizon_days": 14,
+      "simulations": 10000,
+      "seed": 42
+    },
+    "compare_price_strategies_with_forecast": {
+      "horizon_days": 4,
+      "simulations": 10000,
+      "seed": 42
+    },
+    "simulate_bundle_strategy": {
+      "horizon_days": 14,
+      "simulations": 10000,
+      "seed": 42
+    }
+  },
+  "limits": {
+    "horizon_days": {
+      "minimum": 1,
+      "maximum": 180
+    },
+    "simulations": {
+      "minimum": 100,
+      "maximum": 50000
+    },
+    "scenarios": {
+      "minimum": 1,
+      "maximum": 8
+    }
+  },
+  "limitations": [
+    "가격탄력성은 학습 구간에 두 개 이상의 가격 수준이 관측된 메뉴만 지원한다.",
+    "미래 날씨 입력 전까지 최근 관측 문맥을 재사용한다.",
+    "세트 전략의 신규 수요와 잠식 효과는 사용자가 명시한 가정으로 계산한다.",
+    "근거 품질 점수는 실제 매장 결과로 아직 보정되지 않은 휴리스틱이다."
+  ]
+}

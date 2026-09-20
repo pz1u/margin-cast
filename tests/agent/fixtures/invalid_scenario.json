@@ -1,0 +1,11 @@
+{
+  "status": "error",
+  "error": {
+    "code": "INVALID_SCENARIO",
+    "message": "정가는 1,000~100,000원, 할인액은 0 이상 정가 미만이어야 합니다.",
+    "retryable": false,
+    "details": {
+      "index": 0
+    }
+  }
+}
