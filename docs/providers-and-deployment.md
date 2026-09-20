@@ -5,6 +5,9 @@ src.llm_provider_factory.create_llm_provider()가 LLM_PROVIDER 환경변수에 �
 Ollama와 OpenAI 모두 계산 Tool을 직접 실행하지 않으며, Runtime이 기존 execute_tool() 경계에서
 계산 결과를 받는다.
 
+로컬 실행에서는 프로젝트 루트의 `.env`도 읽는다. 같은 이름의 운영체제 환경변수가 있으면
+운영체제 값이 우선하며, `.env`에서 읽은 secret을 프로세스 환경에 다시 기록하지 않는다.
+
 ## Provider 설정
 
 로컬 Ollama는 기존 기본값이다.
